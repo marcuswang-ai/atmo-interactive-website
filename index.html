@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rising Tides: How the Coastline Changes, 1900–2100</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --ink: #1f2933; --muted: #5b6770; --line: #d9dee3; --bg: #f6f7f9; --card: #fff;
+    --water: #2563eb; --exposed: #d97706; --flood: #dc2626; --near: #f59e0b; --safe: #475569;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--ink); background: var(--bg); line-height: 1.5; }
+  header { padding: 22px 28px 10px; max-width: 1400px; margin: 0 auto; }
+  header h1 { margin: 0 0 4px; font-size: 1.7rem; }
+  header p { margin: 4px 0; color: var(--muted); max-width: 900px; }
+  main { max-width: 1400px; margin: 0 auto; padding: 0 28px 40px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+  .layout { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+  .controls h2, section h2 { font-size: 1.05rem; margin: 0 0 10px; }
+  .ctrl { margin-bottom: 18px; }
+  .ctrl label { display: flex; justify-content: space-between; font-weight: 600; font-size: .95rem; }
+  .ctrl .val { font-variant-numeric: tabular-nums; color: var(--water); }
+  .ctrl input[type=range] { width: 100%; margin: 6px 0 2px; accent-color: var(--water); }
+  .ctrl .ends { display: flex; justify-content: space-between; font-size: .75rem; color: var(--muted); }
+  .ctrl .help { font-size: .82rem; color: var(--muted); margin: 4px 0 0; }
+  .country-row { display: flex; gap: 6px; margin-top: 6px; }
+  .country-row input { flex: 1; padding: 7px 9px; border: 1px solid var(--line); border-radius: 6px; font-size: .95rem; }
+  button { padding: 6px 10px; border: 1px solid var(--line); background: #fff; border-radius: 6px; cursor: pointer; font-size: .82rem; }
+  button:hover { background: #eef2f7; }
+  .presets { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+  .warn { font-size: .8rem; color: #9a3412; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 6px; padding: 5px 8px; margin-top: 6px; display: none; }
+  #map { height: 620px; border-radius: 10px; border: 1px solid var(--line); }
+  .mapwrap { position: relative; }
+  .legend { position: absolute; bottom: 22px; left: 10px; z-index: 800; background: rgba(255,255,255,.94); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: .78rem; line-height: 1.6; }
+  .legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 2px; vertical-align: -2px; margin-right: 6px; }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: -1px; margin-right: 7px; }
+  .status { position: absolute; top: 10px; right: 10px; z-index: 800; background: rgba(255,255,255,.94); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: .78rem; color: var(--muted); }
+  .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 16px 0; }
+  @media (max-width: 900px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat .k { font-size: .78rem; color: var(--muted); }
+  .stat .v { font-size: 1.45rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .stat .s { font-size: .75rem; color: var(--muted); }
+  .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .charts { grid-template-columns: 1fr; } }
+  svg text { font-family: inherit; }
+  .chart-note { font-size: .8rem; color: var(--muted); margin: 6px 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th { background: #f1f4f7; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: .78rem; font-weight: 600; color: #fff; }
+  .explain { margin-top: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 900px) { .explain { grid-template-columns: 1fr; } }
+  .explain p, .explain li { font-size: .92rem; }
+  .explain ul { padding-left: 20px; margin: 6px 0; }
+  .full { grid-column: 1 / -1; }
+  code { background: #eef2f7; padding: 1px 4px; border-radius: 4px; font-size: .85em; }
+  footer { text-align: center; font-size: .8rem; color: var(--muted); padding: 10px 0 30px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Rising Tides: how the coastline changes, 1900–2100</h1>
+  <p>As the world warms, oceans expand and glaciers and ice sheets melt, so sea level rises. This map shows which land along the coast ends up below the water line in any year from 1900 to 2100, depending on how much the planet warms. Pick a country, move the sliders, and watch which cities and towns are affected.</p>
+</header>
+
+<main>
+  <div class="layout">
+    <!-- ================= CONTROLS ================= -->
+    <div class="card controls">
+      <h2>Controls</h2>
+
+      <div class="ctrl">
+        <label for="country">Country <span class="val" id="countryVal">World</span></label>
+        <div class="country-row">
+          <input id="country" list="countryList" placeholder="Type a country, e.g. Bangladesh" autocomplete="off">
+          <button id="clearCountry" title="Back to the world map">World</button>
+        </div>
+        <datalist id="countryList"></datalist>
+        <p class="help">Leave blank to see the whole world. The map zooms to the country you choose, and the city table lists only that country's cities.</p>
+      </div>
+
+      <div class="ctrl">
+        <label for="year">Year <span class="val" id="yearVal">2100</span></label>
+        <input type="range" id="year" min="1900" max="2100" step="1" value="2100">
+        <div class="ends"><span>1900</span><span>today (2020)</span><span>2100</span></div>
+        <p class="help">Before 2020 the map uses <b>measured</b> sea level. After 2020 it uses a <b>projection</b> that depends on the warming slider below.</p>
+      </div>
+
+      <div class="ctrl">
+        <label for="warming">Warming by 2100 vs. pre-industrial <span class="val" id="warmingVal">+2.7 °C</span></label>
+        <input type="range" id="warming" min="-5" max="5" step="0.1" value="2.7">
+        <div class="ends"><span>−5 °C</span><span>0</span><span>+5 °C</span></div>
+        <div class="presets">
+          <button data-t="1.4">1.4 °C (Paris, very low emissions)</button>
+          <button data-t="2.7">2.7 °C (roughly current policies)</button>
+          <button data-t="4.4">4.4 °C (very high emissions)</button>
+        </div>
+        <p class="help">The global average temperature the world reaches by 2081–2100, compared with 1850–1900. The world is already about 1.2–1.3 °C warmer.</p>
+        <div class="warn" id="warmWarn"></div>
+      </div>
+
+      <div class="ctrl">
+        <label for="surge">Extra water: high tide + storm surge <span class="val" id="surgeVal">0.0 m</span></label>
+        <input type="range" id="surge" min="0" max="5" step="0.1" value="0">
+        <div class="ends"><span>0 m (calm day)</span><span>5 m (major hurricane)</span></div>
+        <p class="help">Optional. Storms temporarily push water above the average sea level. Set it to 0 for permanent flooding only, or raise it to see how a storm hits on top of the higher sea.</p>
+      </div>
+    </div>
+
+    <!-- ================= MAP ================= -->
+    <div class="mapwrap">
+      <div id="map" role="img" aria-label="Map of land below the projected water level"></div>
+      <div class="status" id="loadStatus">Loading map data…</div>
+      <div class="legend">
+        <div><span class="sw" style="background:rgba(37,99,235,.7)"></span>Dry land today that is <b>under water</b> at this level</div>
+        <div><span class="sw" style="background:rgba(217,119,6,.65)"></span>Sea floor today that is <b>dry land</b> (sea lower than today)</div>
+        <div style="margin-top:4px"><span class="dot" style="background:var(--flood)"></span>City centre below the water level</div>
+        <div><span class="dot" style="background:var(--near)"></span>City centre within 1 m of the water</div>
+        <div><span class="dot" style="background:var(--safe)"></span>City centre safely above</div>
+        <div><span class="dot" style="background:#cbd5e1"></span>City (elevation not checked yet; zoom in)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= STATS ================= -->
+  <div class="stats">
+    <div class="card stat"><div class="k">Year</div><div class="v" id="sYear">2100</div><div class="s" id="sYearKind">projection</div></div>
+    <div class="card stat"><div class="k">Global warming that year</div><div class="v" id="sTemp">+2.7 °C</div><div class="s">vs. 1850–1900</div></div>
+    <div class="card stat"><div class="k">Global sea level vs. today (2020)</div><div class="v" id="sSea">+0.49 m</div><div class="s" id="sSeaSub">global average</div></div>
+    <div class="card stat"><div class="k">Water level drawn on the map</div><div class="v" id="sTotal">+0.49 m</div><div class="s">sea-level change + surge</div></div>
+    <div class="card stat"><div class="k">Checked cities below water</div><div class="v" id="sCities">–</div><div class="s" id="sCitiesSub">in the current view</div></div>
+  </div>
+
+  <!-- ================= CHARTS ================= -->
+  <div class="charts">
+    <div class="card">
+      <svg id="chartTime" viewBox="0 0 620 330" width="100%"></svg>
+      <p class="chart-note">Black: measured sea level (1900–2020). Blue: projection for the warming you chose. Grey dashed: projections for −5, 0, +1.5, +3 and +5 °C, for comparison. The red dot is the year on the map.</p>
+    </div>
+    <div class="card">
+      <svg id="chartWarm" viewBox="0 0 620 330" width="100%"></svg>
+      <p class="chart-note">Points with bars: IPCC AR6 projections for five emissions scenarios (median and "likely" range). Line: the straight-line fit this site uses (rise = 0.20 m + 0.13 m per °C). Dashed parts are extrapolated beyond the IPCC scenarios. The red dot is your slider setting.</p>
+    </div>
+  </div>
+
+  <!-- ================= TABLE ================= -->
+  <div class="card" style="margin-top:16px">
+    <h2 id="tableTitle">Largest cities in view: how high is the city centre above the water?</h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead><tr><th>City</th><th>Country</th><th class="num">Population</th><th class="num">City-centre elevation (m)</th><th class="num">Height above water level (m)</th><th>Status</th></tr></thead>
+        <tbody id="cityRows"><tr><td colspan="6">Loading cities…</td></tr></tbody>
+      </table>
+    </div>
+    <p class="chart-note">The site checks the ground height at the centre of up to 80 of the largest cities in view. "Height above water level" = city-centre elevation − water level on the map. Zoom in or pick a country to check smaller towns. Every town and village name on the base map is shown too; zoom in to see them over the blue flooded areas.</p>
+  </div>
+
+  <!-- ================= EXPLANATION ================= -->
+  <div class="explain">
+    <div class="card">
+      <h2>What is the issue?</h2>
+      <p>Global average sea level has risen about 20 cm since 1900, and the rise is speeding up: about 1.5 mm per year over the 20th century, and about 3–4 mm per year since satellites began measuring in 1993. Two things cause it: seawater <b>expands as it warms</b>, and <b>glaciers and the Greenland and Antarctic ice sheets melt</b> and add water to the ocean. The more the world warms, the faster the sea rises.</p>
+      <p>Hundreds of millions of people live within a few metres of sea level. A coastal mayor, a planner choosing where to build, or a family deciding where to buy a house needs to know: <i>which places end up under water, and how much does that depend on how much we warm the planet?</i></p>
+    </div>
+
+    <div class="card">
+      <h2>What do the sliders do?</h2>
+      <ul>
+        <li><b>Year (1900–2100):</b> moves through time. Before 2020 you see what was actually measured; the coast in 1900 was about 20 cm further out than today (orange areas).</li>
+        <li><b>Warming by 2100 (−5 to +5 °C):</b> how hot the world gets by the end of the century. More warming means a faster and larger rise. Negative values are a "what if the world cooled" thought experiment; they show the sea falling.</li>
+        <li><b>Storm surge (optional, 0–5 m):</b> water piled up temporarily by a storm and high tide, on top of the average sea level.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>What should you notice?</h2>
+      <ul>
+        <li><b>The sliders depend on each other.</b> Before 2020 the warming slider does nothing, because the past is already fixed. The later the year, the more the warming matters: in 2030 the gap between 1.4 °C and 4.4 °C is only a few centimetres, but by 2100 it is about 40 cm.</li>
+        <li><b>Each extra degree adds roughly 13 cm by 2100,</b> and the rise does not stop in 2100. Over the following centuries, each °C commits the world to about 2.3 m more (Levermann et al., 2013).</li>
+        <li><b>Small rises matter most when storms hit.</b> Set surge to 2 m and compare 1900 with 2100: the same storm floods noticeably more land once the sea is higher.</li>
+        <li><b>Places to try:</b> Bangladesh, Vietnam (Mekong Delta), Egypt (Nile Delta), the Netherlands, and the United States (zoom to the Gulf Coast and Florida).</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>How is it calculated?</h2>
+      <p><b>1900–2020:</b> global mean sea level from tide-gauge and satellite reconstructions (Frederikse et al., 2020; NASA), about +0.18 m from 1900 to 2018.</p>
+      <p><b>2020–2100:</b> the rise by 2100 (relative to 1995–2014) is a straight-line fit to the five IPCC AR6 scenarios: <code>rise₂₁₀₀ = 0.198 + 0.130 × T</code> metres, where T is the warming in °C. <i>Check:</i> T = 2.7 °C gives 0.198 + 0.351 = 0.55 m; the IPCC median for SSP2-4.5 is 0.56 m. Between 2020 and 2100 the curve speeds up gradually: <code>SL(t) = SL₂₀₂₀ + (rise₂₁₀₀ − SL₂₀₂₀) × (0.5τ + 0.5τ²)</code>, with τ = (year − 2020)/80.</p>
+      <p><b>Map:</b> for every pixel, ground height comes from the open Terrain Tiles elevation dataset (SRTM, GMTED, ETOPO and other sources). A pixel is shaded blue if its height is above 0 m (dry today) but below the water level. This is called a "bathtub" model.</p>
+    </div>
+
+    <div class="card full">
+      <h2>Limitations: read before you trust a number</h2>
+      <ul>
+        <li><b>Global average only.</b> Real local sea level also depends on land sinking or rising (for example, parts of the US Gulf Coast are sinking), on ocean currents and on gravity effects of melting ice. Local rise can be much larger or smaller than the global number.</li>
+        <li><b>No sea walls or levees.</b> Protected places like the Netherlands or New Orleans show up as flooded even though defences keep the water out today. The model also does not check whether low inland land is actually connected to the sea.</li>
+        <li><b>Elevation data is coarse.</b> Satellite elevation data can be off by several metres, which is larger than the sea-level change itself. When zoomed out, each pixel covers kilometres. Treat the map as an illustration, not a property-level flood map.</li>
+        <li><b>Ice-sheet uncertainty.</b> The IPCC cannot rule out a rise approaching 2 m by 2100 under very high emissions, if the Antarctic ice sheet collapses faster than expected. Those low-likelihood outcomes are not included here.</li>
+        <li><b>Outside the IPCC scenarios the line is extrapolated.</b> Warming below about 1.4 °C or above 4.4 °C is not covered by the IPCC scenarios, and cooling below pre-industrial (negative values) would require removing more than all the extra greenhouse gas humans have added. Those settings show the direction of change, not a forecast.</li>
+      </ul>
+    </div>
+
+    <div class="card full">
+      <h2>Sources</h2>
+      <ol style="font-size:.88rem">
+        <li>IPCC (2021). <i>Climate Change 2021: The Physical Science Basis, Summary for Policymakers</i>, Table SPM.1 (warming by scenario) and B.5.3 (sea-level rise by 2100). <a href="https://www.ipcc.ch/report/ar6/wg1/chapter/summary-for-policymakers/">ipcc.ch</a></li>
+        <li>Frederikse, T. et al. (2020). The causes of sea-level rise since 1900. <i>Nature</i> 584, 393–397. <a href="https://doi.org/10.1038/s41586-020-2591-3">doi:10.1038/s41586-020-2591-3</a></li>
+        <li>NASA Sea Level Change portal: satellite sea level since 1993. <a href="https://sealevel.nasa.gov/">sealevel.nasa.gov</a></li>
+        <li>Levermann, A. et al. (2013). The multimillennial sea-level commitment of global warming. <i>PNAS</i> 110, 13745–13750. <a href="https://doi.org/10.1073/pnas.1219414110">doi:10.1073/pnas.1219414110</a></li>
+        <li>Terrain Tiles (Mapzen / AWS Open Data): global elevation. <a href="https://registry.opendata.aws/terrain-tiles/">registry.opendata.aws/terrain-tiles</a></li>
+        <li>Natural Earth: country borders and populated places. <a href="https://www.naturalearthdata.com/">naturalearthdata.com</a></li>
+        <li>Base map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/attributions">CARTO</a>.</li>
+        <li>Historical global temperature (shown in the stats only): approximate values from HadCRUT5 / Berkeley Earth; about 1.2 °C above 1850–1900 by 2020.</li>
+      </ol>
+    </div>
+  </div>
+</main>
+<footer>Built with Claude Code for a climate-risk course project.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+"use strict";
+/* =====================================================================
+   1. SEA-LEVEL MODEL
+   All sea levels are in metres relative to the 1995–2014 average
+   (the IPCC AR6 baseline, centred on ~2005).
+   ===================================================================== */
+
+// Observed global mean sea level (approximate reconstruction).
+// 1900->2018 ≈ +0.18 m (Frederikse 2020: 1.56 mm/yr); 1993->2020 ≈ 3.4 mm/yr (satellites).
+const HIST = [
+  [1900, -0.135], [1920, -0.115], [1940, -0.090], [1960, -0.070],
+  [1980, -0.050], [1993, -0.036], [2005, 0.000], [2020, 0.055]
+];
+const SL_2020 = 0.055;
+
+// IPCC AR6 SPM: warming (2081–2100 vs 1850–1900) and GMSL rise in 2100 (vs 1995–2014)
+const IPCC = [
+  { name: "SSP1-1.9", T: 1.4, med: 0.38, lo: 0.28, hi: 0.55 },
+  { name: "SSP1-2.6", T: 1.8, med: 0.44, lo: 0.32, hi: 0.62 },
+  { name: "SSP2-4.5", T: 2.7, med: 0.56, lo: 0.44, hi: 0.76 },
+  { name: "SSP3-7.0", T: 3.6, med: 0.68, lo: 0.55, hi: 0.90 },
+  { name: "SSP5-8.5", T: 4.4, med: 0.77, lo: 0.63, hi: 1.01 }
+];
+
+// Linear fit to the IPCC medians above.
+function rise2100(T) { return 0.198 + 0.130 * T; }
+
+function interp(table, x) {
+  if (x <= table[0][0]) return table[0][1];
+  for (let i = 1; i < table.length; i++) {
+    if (x <= table[i][0]) {
+      const [x0, y0] = table[i - 1], [x1, y1] = table[i];
+      return y0 + (y1 - y0) * (x - x0) / (x1 - x0);
+    }
+  }
+  return table[table.length - 1][1];
+}
+
+// Global mean sea level in a given year for a given end-of-century warming T.
+function gmsl(year, T) {
+  if (year <= 2020) return interp(HIST, year);           // the past does not depend on T
+  const tau = (year - 2020) / 80;
+  return SL_2020 + (rise2100(T) - SL_2020) * (0.5 * tau + 0.5 * tau * tau);
+}
+// Change relative to today (2020): what the map is drawn against.
+function seaVsToday(year, T) { return gmsl(year, T) - SL_2020; }
+
+// Global temperature for the stats tile (approximate observations, then linear path to T).
+const TEMP_HIST = [[1900, 0.0], [1920, 0.0], [1940, 0.15], [1960, 0.2], [1980, 0.35], [2000, 0.65], [2020, 1.2]];
+function tempInYear(year, T) {
+  if (year <= 2020) return interp(TEMP_HIST, year);
+  return 1.2 + (T - 1.2) * (year - 2020) / 80;
+}
+
+/* =====================================================================
+   2. STATE + CONTROLS
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const state = { year: 2100, T: 2.7, surge: 0, country: null };
+function waterLevel() { return seaVsToday(state.year, state.T) + state.surge; }
+
+const fmtM = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + " m";
+const fmtT = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + " °C";
+
+function readControls() {
+  state.year = +$("year").value;
+  state.T = +$("warming").value;
+  state.surge = +$("surge").value;
+}
+
+function updateText() {
+  $("yearVal").textContent = state.year;
+  $("warmingVal").textContent = fmtT(state.T);
+  $("surgeVal").textContent = state.surge.toFixed(1) + " m";
+
+  const warn = $("warmWarn");
+  if (state.T < 0) {
+    warn.style.display = "block";
+    warn.textContent = "Hypothetical: a world colder than pre-industrial would need far more than removing all human greenhouse gases. The result is an extrapolation that shows the direction, not a forecast.";
+  } else if (state.T < 1.4 || state.T > 4.4) {
+    warn.style.display = "block";
+    warn.textContent = "Outside the IPCC scenarios (1.4–4.4 °C): the sea-level number is extrapolated from the straight-line fit.";
+  } else warn.style.display = "none";
+
+  const sea = seaVsToday(state.year, state.T);
+  $("sYear").textContent = state.year;
+  $("sYearKind").textContent = state.year <= 2020 ? "measured (warming slider has no effect)" : "projection";
+  $("sTemp").textContent = fmtT(tempInYear(state.year, state.T));
+  $("sSea").textContent = fmtM(sea);
+  $("sSeaSub").textContent = "global average; " + (sea * 100 >= 0 ? "+" : "−") + Math.abs(sea * 100).toFixed(0) + " cm";
+  $("sTotal").textContent = fmtM(waterLevel());
+}
+
+let redrawPending = false;
+function onChange() {
+  readControls();
+  updateText();
+  drawCharts();
+  if (!redrawPending) {
+    redrawPending = true;
+    requestAnimationFrame(() => { redrawPending = false; repaintAllTiles(); refreshCities(false); });
+  }
+}
+["year", "warming", "surge"].forEach(id => $(id).addEventListener("input", onChange));
+document.querySelectorAll(".presets button").forEach(b =>
+  b.addEventListener("click", () => { $("warming").value = b.dataset.t; onChange(); }));
+
+/* =====================================================================
+   3. MAP + ELEVATION OVERLAY
+   ===================================================================== */
+const map = L.map("map", { preferCanvas: true, worldCopyJump: true, minZoom: 2, maxZoom: 14 }).setView([20, 10], 2);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
+  subdomains: "abcd", maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> | Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a> | Places: Natural Earth'
+}).addTo(map);
+
+map.createPane("flood");  map.getPane("flood").style.zIndex = 350;
+map.createPane("labels"); map.getPane("labels").style.zIndex = 450;
+map.getPane("labels").style.pointerEvents = "none";
+
+// Place-name labels for every city, town and village (OpenStreetMap), drawn above the flood colours.
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
+  subdomains: "abcd", maxZoom: 19, pane: "labels"
+}).addTo(map);
+
+const TERRARIUM = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
+const decodeCanvas = document.createElement("canvas");
+decodeCanvas.width = decodeCanvas.height = 256;
+const decodeCtx = decodeCanvas.getContext("2d", { willReadFrequently: true });
+
+// Terrarium encoding: height (m) = R*256 + G + B/256 − 32768
+function decodeTerrarium(img) {
+  decodeCtx.clearRect(0, 0, 256, 256);
+  decodeCtx.drawImage(img, 0, 0);
+  const d = decodeCtx.getImageData(0, 0, 256, 256).data;
+  const e = new Float32Array(256 * 256);
+  for (let i = 0, j = 0; i < e.length; i++, j += 4) e[i] = d[j] * 256 + d[j + 1] + d[j + 2] / 256 - 32768;
+  return e;
+}
+
+function loadElevTile(z, x, y) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => { try { resolve(decodeTerrarium(img)); } catch (err) { reject(err); } };
+    img.onerror = reject;
+    img.src = TERRARIUM(z, x, y);
+  });
+}
+
+const liveTiles = new Set();
+function paintTile(canvas) {
+  const e = canvas._elev;
+  if (!e) return;
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(256, 256);
+  const d = img.data;
+  const L = waterLevel();
+  for (let i = 0, j = 0; i < e.length; i++, j += 4) {
+    const h = e[i];
+    if (L > 0 && h > 0 && h <= L) {            // dry today, under water at this level
+      d[j] = 37; d[j + 1] = 99; d[j + 2] = 235; d[j + 3] = 175;
+    } else if (L < 0 && h <= 0 && h > L) {     // sea floor today, dry land at this level
+      d[j] = 217; d[j + 1] = 119; d[j + 2] = 6; d[j + 3] = 165;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+function repaintAllTiles() { liveTiles.forEach(paintTile); }
+
+const FloodLayer = L.GridLayer.extend({
+  createTile(coords, done) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 256;
+    const n = 2 ** coords.z;
+    if (coords.y < 0 || coords.y >= n) { setTimeout(() => done(null, c)); return c; }
+    const x = ((coords.x % n) + n) % n;
+    loadElevTile(coords.z, x, coords.y)
+      .then(e => { c._elev = e; liveTiles.add(c); paintTile(c); done(null, c); })
+      .catch(() => done(null, c));
+    return c;
+  }
+});
+const flood = new FloodLayer({ pane: "flood", maxNativeZoom: 14, updateWhenZooming: false });
+flood.on("tileunload", ev => liveTiles.delete(ev.tile));
+flood.addTo(map);
+
+/* =====================================================================
+   4. COUNTRIES
+   ===================================================================== */
+const NE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/";
+const pick = (p, ...keys) => { for (const k of keys) if (p[k] !== undefined && p[k] !== null && p[k] !== "") return p[k]; return undefined; };
+
+let countries = [];          // {name, a3, feature}
+let outline = null;
+
+function ringArea(r) {  // planar area in degrees², good enough for ranking polygons
+  let a = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]);
+  return Math.abs(a / 2);
+}
+// Bounds from the country's large polygons only, so far-flung small islands
+// (e.g. the Aleutians) don't stretch the view across the whole globe.
+function countryBounds(feature) {
+  const g = feature.geometry;
+  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  const areas = polys.map(p => ringArea(p[0]));
+  const maxA = Math.max(...areas);
+  const b = L.latLngBounds([]);
+  polys.forEach((p, i) => { if (areas[i] >= 0.15 * maxA) p[0].forEach(([lon, lat]) => b.extend([lat, lon])); });
+  return b;
+}
+
+function setCountry(name) {
+  const q = (name || "").trim().toLowerCase();
+  if (outline) { map.removeLayer(outline); outline = null; }
+  if (!q) {
+    state.country = null;
+    $("countryVal").textContent = "World";
+    $("country").value = "";
+    map.setView([20, 10], 2);
+    refreshCities(true);
+    return;
+  }
+  const c = countries.find(c => c.name.toLowerCase() === q) || countries.find(c => c.name.toLowerCase().startsWith(q));
+  if (!c) { $("countryVal").textContent = "not found"; return; }
+  state.country = c;
+  $("country").value = c.name;
+  $("countryVal").textContent = c.name;
+  outline = L.geoJSON(c.feature, { style: { color: "#111827", weight: 1.5, fill: false, dashArray: "4 3" }, interactive: false }).addTo(map);
+  map.fitBounds(countryBounds(c.feature), { padding: [20, 20], maxZoom: 9 });
+  refreshCities(true);
+}
+$("country").addEventListener("change", e => setCountry(e.target.value));
+$("country").addEventListener("keydown", e => { if (e.key === "Enter") setCountry(e.target.value); });
+$("clearCountry").addEventListener("click", () => setCountry(""));
+
+/* =====================================================================
+   5. CITIES
+   ===================================================================== */
+let cities = [];             // {name, country, a3, lat, lon, pop, elev?}
+const cityLayer = L.layerGroup().addTo(map);
+const ELEV_Z = 10;           // ~150 m pixels at the equator
+const MAX_CHECK = 80;
+const tileCache = new Map(); // "z/x/y" -> Promise<Float32Array>
+const queue = []; let active = 0; const MAX_ACTIVE = 6;
+
+function getTileCached(z, x, y) {
+  const key = z + "/" + x + "/" + y;
+  if (!tileCache.has(key)) {
+    tileCache.set(key, loadElevTile(z, x, y).catch(() => null));
+    if (tileCache.size > 300) tileCache.delete(tileCache.keys().next().value);
+  }
+  return tileCache.get(key);
+}
+
+// Median of the positive (land) heights in a 5×5 pixel window (~750 m) around the city centre.
+async function cityElevation(c) {
+  const n = 2 ** ELEV_Z;
+  const xt = (c.lon + 180) / 360 * n;
+  const latR = c.lat * Math.PI / 180;
+  const yt = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n;
+  const tx = Math.floor(xt), ty = Math.floor(yt);
+  const px = Math.floor((xt - tx) * 256), py = Math.floor((yt - ty) * 256);
+  const e = await getTileCached(ELEV_Z, ((tx % n) + n) % n, ty);
+  if (!e) return null;
+  const vals = [];
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    const x = Math.min(255, Math.max(0, px + dx)), y = Math.min(255, Math.max(0, py + dy));
+    const h = e[y * 256 + x];
+    if (h > 0) vals.push(h);
+  }
+  if (!vals.length) return 0;                      // centre sits on a shoreline pixel
+  vals.sort((a, b) => a - b);
+  return vals[Math.floor(vals.length / 2)];
+}
+
+function pump() {
+  while (active < MAX_ACTIVE && queue.length) {
+    const c = queue.shift();
+    active++;
+    cityElevation(c).then(h => { c.elev = h; }).catch(() => { c.elev = null; })
+      .finally(() => { active--; c.queued = false; scheduleCityRender(); pump(); });
+  }
+}
+
+function inCountry(c) {
+  if (!state.country) return true;
+  return (c.a3 && c.a3 === state.country.a3) || (c.country && c.country.toLowerCase() === state.country.name.toLowerCase());
+}
+
+function status(c) {
+  if (c.elev === undefined || c.elev === null) return "unknown";
+  const L = waterLevel();
+  const margin = c.elev - L;
+  if (L > 0 && margin <= 0) return "flooded";
+  if (margin <= 1) return "near";
+  return "safe";
+}
+const COLORS = { flooded: "#dc2626", near: "#f59e0b", safe: "#475569", unknown: "#cbd5e1" };
+const LABELS = { flooded: "Below water", near: "Within 1 m", safe: "Above", unknown: "Not checked" };
+
+let visible = [];
+function refreshCities(requeue) {
+  if (!cities.length) return;
+  const b = map.getBounds().pad(0.05);
+  visible = cities.filter(c => inCountry(c) && b.contains([c.lat, c.lon]));
+  // Queue the largest cities in view for an elevation check (only when the view changed).
+  if (requeue) {
+    queue.length = 0;                                  // drop checks for cities no longer in view
+    cities.forEach(c => { if (c.elev === undefined) c.queued = false; });
+    visible.slice(0, MAX_CHECK).forEach(c => {
+      if (c.elev === undefined && !c.queued) { c.queued = true; queue.push(c); }
+    });
+    pump();
+  }
+  renderCities();
+}
+
+let renderTimer = null;
+function scheduleCityRender() {
+  if (renderTimer) return;
+  renderTimer = setTimeout(() => { renderTimer = null; renderCities(); }, 150);
+}
+
+function renderCities() {
+  cityLayer.clearLayers();
+  const shown = visible.slice(0, 1500);
+  for (let i = shown.length - 1; i >= 0; i--) {     // draw big cities last so they sit on top
+    const c = shown[i];
+    const s = status(c);
+    const r = Math.min(14, Math.max(3, Math.sqrt(c.pop) / 450));
+    const m = L.circleMarker([c.lat, c.lon], {
+      radius: r, color: "#fff", weight: 1, fillColor: COLORS[s], fillOpacity: 0.9
+    });
+    const elevTxt = (c.elev === undefined || c.elev === null) ? "not checked yet (zoom in)" : c.elev.toFixed(1) + " m";
+    m.bindTooltip(`<b>${c.name}</b>, ${c.country}<br>Population: ${c.pop.toLocaleString()}<br>City-centre elevation: ${elevTxt}<br>${LABELS[s]}`);
+    m.addTo(cityLayer);
+  }
+
+  // Table + summary
+  const checked = visible.filter(c => c.elev !== undefined && c.elev !== null);
+  const order = { flooded: 0, near: 1, safe: 2 };
+  checked.sort((a, b) => (order[status(a)] - order[status(b)]) || (b.pop - a.pop));
+  const flooded = checked.filter(c => status(c) === "flooded");
+  const popF = flooded.reduce((s, c) => s + c.pop, 0);
+  $("sCities").textContent = flooded.length + " / " + checked.length;
+  $("sCitiesSub").textContent = flooded.length ? "≈ " + fmtPop(popF) + " people (city-centre test)" : "of the largest cities in view";
+  $("tableTitle").textContent = (state.country ? state.country.name + ": " : "Current view: ") +
+    "largest cities ranked by risk, at water level " + fmtM(waterLevel()) + " in " + state.year;
+
+  const rows = checked.slice(0, 30).map(c => {
+    const s = status(c), margin = c.elev - waterLevel();
+    return `<tr><td>${c.name}</td><td>${c.country}</td><td class="num">${c.pop.toLocaleString()}</td>
+      <td class="num">${c.elev === 0 ? "≈0 (shoreline)" : c.elev.toFixed(1)}</td>
+      <td class="num">${margin.toFixed(2)}</td>
+      <td><span class="pill" style="background:${COLORS[s]}">${LABELS[s]}</span></td></tr>`;
+  });
+  $("cityRows").innerHTML = rows.length ? rows.join("") :
+    `<tr><td colspan="6">${visible.length ? "Checking city elevations…" : "No cities in view. Zoom out or pick a country."}</td></tr>`;
+}
+function fmtPop(p) { return p >= 1e6 ? (p / 1e6).toFixed(1) + " million" : Math.round(p / 1e3) + " thousand"; }
+
+map.on("moveend", () => refreshCities(true));
+
+/* =====================================================================
+   6. CHARTS (hand-drawn SVG so they update instantly)
+   ===================================================================== */
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function axes(svg, o) {
+  // o: {title, xlab, ylab, x0,x1,y0,y1, xticks, yticks, xfmt, yfmt}
+  const W = 620, H = 330, m = { l: 62, r: 18, t: 34, b: 48 };
+  const X = v => m.l + (v - o.x0) / (o.x1 - o.x0) * (W - m.l - m.r);
+  const Y = v => H - m.b - (v - o.y0) / (o.y1 - o.y0) * (H - m.t - m.b);
+  svg.innerHTML = "";
+  svg.appendChild(el("text", { x: W / 2, y: 20, "text-anchor": "middle", "font-size": 15, "font-weight": 700, fill: "#1f2933" }, o.title));
+  o.yticks.forEach(v => {
+    svg.appendChild(el("line", { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: v === 0 ? "#9aa5b1" : "#e5e9ee" }));
+    svg.appendChild(el("text", { x: m.l - 6, y: Y(v) + 4, "text-anchor": "end", "font-size": 11, fill: "#5b6770" }, o.yfmt(v)));
+  });
+  o.xticks.forEach(v => {
+    svg.appendChild(el("line", { x1: X(v), x2: X(v), y1: H - m.b, y2: H - m.b + 4, stroke: "#9aa5b1" }));
+    svg.appendChild(el("text", { x: X(v), y: H - m.b + 17, "text-anchor": "middle", "font-size": 11, fill: "#5b6770" }, o.xfmt(v)));
+  });
+  svg.appendChild(el("line", { x1: m.l, x2: W - m.r, y1: H - m.b, y2: H - m.b, stroke: "#5b6770" }));
+  svg.appendChild(el("line", { x1: m.l, x2: m.l, y1: m.t, y2: H - m.b, stroke: "#5b6770" }));
+  svg.appendChild(el("text", { x: (m.l + W - m.r) / 2, y: H - 8, "text-anchor": "middle", "font-size": 12, fill: "#1f2933" }, o.xlab));
+  svg.appendChild(el("text", { x: 16, y: (m.t + H - m.b) / 2, "text-anchor": "middle", "font-size": 12, fill: "#1f2933", transform: `rotate(-90 16 ${(m.t + H - m.b) / 2})` }, o.ylab));
+  return { X, Y };
+}
+const path = pts => pts.map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + "," + p[1].toFixed(1)).join("");
+
+function drawCharts() {
+  // --- Chart 1: sea level over time ---
+  const s1 = $("chartTime");
+  const { X, Y } = axes(s1, {
+    title: "Global mean sea level, 1900–2100", xlab: "Year", ylab: "Sea level vs. 2020 (m)",
+    x0: 1900, x1: 2100, y0: -0.6, y1: 0.9,
+    xticks: [1900, 1925, 1950, 1975, 2000, 2025, 2050, 2075, 2100],
+    yticks: [-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8], xfmt: v => v, yfmt: v => v.toFixed(1)
+  });
+  [-5, 0, 1.5, 3, 5].forEach(T => {
+    const pts = []; for (let y = 2020; y <= 2100; y += 2) pts.push([X(y), Y(seaVsToday(y, T))]);
+    s1.appendChild(el("path", { d: path(pts), fill: "none", stroke: "#b8c2cc", "stroke-width": 1.2, "stroke-dasharray": "4 3" }));
+    s1.appendChild(el("text", { x: X(2100) - 3, y: Y(seaVsToday(2100, T)) - 4, "text-anchor": "end", "font-size": 10, fill: "#8a96a3" }, (T > 0 ? "+" : T < 0 ? "−" : "") + Math.abs(T) + " °C"));
+  });
+  const hist = []; for (let y = 1900; y <= 2020; y += 1) hist.push([X(y), Y(seaVsToday(y, state.T))]);
+  s1.appendChild(el("path", { d: path(hist), fill: "none", stroke: "#111827", "stroke-width": 2.2 }));
+  const proj = []; for (let y = 2020; y <= 2100; y += 1) proj.push([X(y), Y(seaVsToday(y, state.T))]);
+  s1.appendChild(el("path", { d: path(proj), fill: "none", stroke: "#2563eb", "stroke-width": 2.8 }));
+  s1.appendChild(el("line", { x1: X(state.year), x2: X(state.year), y1: Y(0.9), y2: Y(-0.6), stroke: "#dc2626", "stroke-dasharray": "3 3" }));
+  const sv = seaVsToday(state.year, state.T);
+  s1.appendChild(el("circle", { cx: X(state.year), cy: Y(sv), r: 5.5, fill: "#dc2626", stroke: "#fff", "stroke-width": 1.5 }));
+  const lx = state.year > 2040 ? X(state.year) - 8 : X(state.year) + 8;
+  s1.appendChild(el("text", { x: lx, y: Y(sv) - 9, "text-anchor": state.year > 2040 ? "end" : "start", "font-size": 12, "font-weight": 700, fill: "#dc2626" }, state.year + ": " + fmtM(sv)));
+  s1.appendChild(el("text", { x: X(1905), y: Y(0.8), "font-size": 11, fill: "#111827" }, "— measured"));
+  s1.appendChild(el("text", { x: X(1905), y: Y(0.68), "font-size": 11, fill: "#2563eb" }, "— projection at " + fmtT(state.T)));
+
+  // --- Chart 2: 2100 rise vs warming ---
+  const s2 = $("chartWarm");
+  const A = axes(s2, {
+    title: "Sea-level rise by 2100 depends on warming", xlab: "Warming by 2100 vs. pre-industrial (°C)",
+    ylab: "Rise by 2100 vs. 1995–2014 (m)", x0: -5, x1: 5, y0: -0.6, y1: 1.1,
+    xticks: [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5], yticks: [-0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1.0],
+    xfmt: v => v, yfmt: v => v.toFixed(1)
+  });
+  const seg = (a, b, dash) => s2.appendChild(el("line", { x1: A.X(a), y1: A.Y(rise2100(a)), x2: A.X(b), y2: A.Y(rise2100(b)), stroke: "#2563eb", "stroke-width": 2, "stroke-dasharray": dash ? "5 4" : "none" }));
+  seg(-5, 1.4, true); seg(1.4, 4.4, false); seg(4.4, 5, true);
+  IPCC.forEach(s => {
+    s2.appendChild(el("line", { x1: A.X(s.T), x2: A.X(s.T), y1: A.Y(s.lo), y2: A.Y(s.hi), stroke: "#111827", "stroke-width": 1.5 }));
+    s2.appendChild(el("circle", { cx: A.X(s.T), cy: A.Y(s.med), r: 4, fill: "#111827" }));
+  });
+  s2.appendChild(el("text", { x: A.X(1.4) - 6, y: A.Y(0.62), "text-anchor": "end", "font-size": 10, fill: "#111827" }, "IPCC AR6 scenarios"));
+  const r = rise2100(state.T);
+  s2.appendChild(el("circle", { cx: A.X(state.T), cy: A.Y(r), r: 6, fill: "#dc2626", stroke: "#fff", "stroke-width": 1.5 }));
+  s2.appendChild(el("text", { x: A.X(state.T) + (state.T > 2.5 ? -10 : 10), y: A.Y(r) + (state.T > 2.5 ? -10 : 16), "text-anchor": state.T > 2.5 ? "end" : "start", "font-size": 12, "font-weight": 700, fill: "#dc2626" }, fmtT(state.T) + " → " + fmtM(r)));
+}
+
+/* =====================================================================
+   7. LOAD DATA
+   ===================================================================== */
+async function loadData() {
+  try {
+    const [cRes, pRes] = await Promise.all([
+      fetch(NE + "ne_50m_admin_0_countries.geojson"),
+      fetch(NE + "ne_10m_populated_places_simple.geojson")
+    ]);
+    const cj = await cRes.json();
+    countries = cj.features.map(f => ({
+      name: pick(f.properties, "ADMIN", "admin", "NAME", "name"),
+      a3: pick(f.properties, "ADM0_A3", "adm0_a3", "ISO_A3", "iso_a3"),
+      feature: f
+    })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
+    $("countryList").innerHTML = countries.map(c => `<option value="${c.name}">`).join("");
+
+    const pj = await pRes.json();
+    cities = pj.features.map(f => {
+      const p = f.properties, g = f.geometry.coordinates;
+      return {
+        name: pick(p, "name", "NAME", "nameascii", "NAMEASCII"),
+        country: pick(p, "adm0name", "ADM0NAME", "sov0name", "SOV0NAME") || "",
+        a3: pick(p, "adm0_a3", "ADM0_A3", "sov_a3", "SOV_A3"),
+        lat: g[1], lon: g[0],
+        pop: +(pick(p, "pop_max", "POP_MAX", "pop_min", "POP_MIN") || 0)
+      };
+    }).filter(c => c.name && isFinite(c.lat)).sort((a, b) => b.pop - a.pop);
+    $("loadStatus").textContent = cities.length.toLocaleString() + " cities, " + countries.length + " countries loaded";
+    setTimeout(() => $("loadStatus").style.display = "none", 4000);
+    refreshCities(true);
+  } catch (err) {
+    console.error(err);
+    $("loadStatus").textContent = "Could not load city/country data (check your internet connection).";
+  }
+}
+
+readControls(); updateText(); drawCharts(); loadData();
+</script>
+</body>
+</html>
