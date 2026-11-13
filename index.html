@@ -84,22 +84,32 @@
       </div>
 
       <div class="ctrl">
-        <label for="year">Year <span class="val" id="yearVal">2100</span></label>
-        <input type="range" id="year" min="1900" max="2100" step="1" value="2100">
+        <label for="city">City (optional) <span class="val" id="cityVal">none</span></label>
+        <div class="country-row">
+          <input id="city" list="cityList" placeholder="Type a city, e.g. Dhaka" autocomplete="off">
+          <button id="clearCity">Clear</button>
+        </div>
+        <datalist id="cityList"></datalist>
+        <p class="help">Zooms in on one city and measures how much of its land is below the water as you move the sliders. Pick a country first to list all of its cities.</p>
+      </div>
+
+      <div class="ctrl">
+        <label for="year">Year <span class="val" id="yearVal">2026</span></label>
+        <input type="range" id="year" min="1900" max="2100" step="1" value="2026">
         <div class="ends"><span>1900</span><span>today (2020)</span><span>2100</span></div>
         <p class="help">Before 2020 the map uses <b>measured</b> sea level. After 2020 it uses a <b>projection</b> that depends on the warming slider below.</p>
       </div>
 
       <div class="ctrl">
-        <label for="warming">Warming by 2100 vs. pre-industrial <span class="val" id="warmingVal">+2.7 °C</span></label>
-        <input type="range" id="warming" min="-5" max="5" step="0.1" value="2.7">
+        <label for="warming">Warming by 2100 vs. pre-industrial <span class="val" id="warmingVal">+1.4 °C</span></label>
+        <input type="range" id="warming" min="-5" max="5" step="0.1" value="1.4">
         <div class="ends"><span>−5 °C</span><span>0</span><span>+5 °C</span></div>
         <div class="presets">
-          <button data-t="1.4">1.4 °C (Paris, very low emissions)</button>
+          <button data-t="1.4">1.4 °C (about today's level; very low emissions)</button>
           <button data-t="2.7">2.7 °C (roughly current policies)</button>
           <button data-t="4.4">4.4 °C (very high emissions)</button>
         </div>
-        <p class="help">The global average temperature the world reaches by 2081–2100, compared with 1850–1900. The world is already about 1.2–1.3 °C warmer.</p>
+        <p class="help">The global average temperature the world reaches by 2081–2100, compared with 1850–1900. The sliders start at present day: the year 2026 and about 1.4 °C, close to today's warming (so the default is "warming stops rising now").</p>
         <div class="warn" id="warmWarn"></div>
       </div>
 
@@ -114,15 +124,19 @@
     <!-- ================= MAP ================= -->
     <div class="mapwrap">
       <div id="map" role="img" aria-label="Map of land below the projected water level"></div>
-      <div class="status" id="loadStatus">Loading map data…</div>
+      <div class="status" id="loadStatus">Loading city and country data…</div>
       <div class="legend">
         <div><span class="sw" style="background:rgba(37,99,235,.7)"></span>Dry land today that is <b>under water</b> at this level</div>
+        <div style="padding-left:18px;color:#5b6770">Lighter blue = only part of that square's land floods</div>
         <div><span class="sw" style="background:rgba(217,119,6,.65)"></span>Sea floor today that is <b>dry land</b> (sea lower than today)</div>
         <div style="margin-top:4px"><span class="dot" style="background:var(--flood)"></span>City centre below the water level</div>
         <div><span class="dot" style="background:var(--near)"></span>City centre within 1 m of the water</div>
         <div><span class="dot" style="background:var(--safe)"></span>City centre safely above</div>
-        <div><span class="dot" style="background:#cbd5e1"></span>City (elevation not checked yet; zoom in)</div>
+        <div><span class="dot" style="background:#cbd5e1"></span>City (elevation still loading)</div>
+        <div><span class="dot" style="background:#fff;border:2.5px solid #111827;width:9px;height:9px"></span>Black ring = national capital</div>
+        <div style="color:#5b6770">Zoomed out, only big cities and capitals are shown</div>
       </div>
+      <p class="chart-note" id="floodDetail"></p>
     </div>
   </div>
 
@@ -133,6 +147,15 @@
     <div class="card stat"><div class="k">Global sea level vs. today (2020)</div><div class="v" id="sSea">+0.49 m</div><div class="s" id="sSeaSub">global average</div></div>
     <div class="card stat"><div class="k">Water level drawn on the map</div><div class="v" id="sTotal">+0.49 m</div><div class="s">sea-level change + surge</div></div>
     <div class="card stat"><div class="k">Checked cities below water</div><div class="v" id="sCities">–</div><div class="s" id="sCitiesSub">in the current view</div></div>
+  </div>
+
+  <!-- ================= ONE CITY ================= -->
+  <div class="card" id="cityPanel" style="display:none;margin-bottom:16px">
+    <div class="charts">
+      <div><h2 id="cityTitle"></h2><div id="cityText"></div></div>
+      <div><svg id="chartCity" viewBox="0 0 620 330" width="100%"></svg>
+        <p class="chart-note">Blue line: share of the city's land under water at each water level (sea-level change + surge). Red dot: your current settings. Dashed lines: where global sea level alone reaches by 2100 under 1.4, 2.7 and 4.4 °C of warming.</p></div>
+    </div>
   </div>
 
   <!-- ================= CHARTS ================= -->
@@ -152,11 +175,11 @@
     <h2 id="tableTitle">Largest cities in view: how high is the city centre above the water?</h2>
     <div style="overflow-x:auto">
       <table>
-        <thead><tr><th>City</th><th>Country</th><th class="num">Population</th><th class="num">City-centre elevation (m)</th><th class="num">Height above water level (m)</th><th>Status</th></tr></thead>
-        <tbody id="cityRows"><tr><td colspan="6">Loading cities…</td></tr></tbody>
+        <thead><tr><th>City</th><th>Country</th><th class="num">Population</th><th class="num">City-centre elevation (m)</th><th class="num">Height above water level (m)</th><th class="num">Elevation data detail</th><th>Status</th></tr></thead>
+        <tbody id="cityRows"><tr><td colspan="7">Loading cities…</td></tr></tbody>
       </table>
     </div>
-    <p class="chart-note">The site checks the ground height at the centre of up to 80 of the largest cities in view. "Height above water level" = city-centre elevation − water level on the map. Zoom in or pick a country to check smaller towns. Every town and village name on the base map is shown too; zoom in to see them over the blue flooded areas.</p>
+    <p class="chart-note">Every city in the region (the whole world, or the selected country) is checked once; the 40 most at risk among the cities shown in the current view are listed (zoomed out, only big cities and capitals are shown). "Height above water level" = city-centre elevation − water level on the map. "Elevation data detail" is the size of one elevation pixel. For the whole world the data is coarse (kilometres), so city heights are rough; pick a country to check them with finer data. The detail stays fixed while you zoom, so results never change just because you zoomed in or out.</p>
   </div>
 
   <!-- ================= EXPLANATION ================= -->
@@ -190,7 +213,8 @@
       <h2>How is it calculated?</h2>
       <p><b>1900–2020:</b> global mean sea level from tide-gauge and satellite reconstructions (Frederikse et al., 2020; NASA), about +0.18 m from 1900 to 2018.</p>
       <p><b>2020–2100:</b> the rise by 2100 (relative to 1995–2014) is a straight-line fit to the five IPCC AR6 scenarios: <code>rise₂₁₀₀ = 0.198 + 0.130 × T</code> metres, where T is the warming in °C. <i>Check:</i> T = 2.7 °C gives 0.198 + 0.351 = 0.55 m; the IPCC median for SSP2-4.5 is 0.56 m. Between 2020 and 2100 the curve speeds up gradually: <code>SL(t) = SL₂₀₂₀ + (rise₂₁₀₀ − SL₂₀₂₀) × (0.5τ + 0.5τ²)</code>, with τ = (year − 2020)/80.</p>
-      <p><b>Map:</b> for every pixel, ground height comes from the open Terrain Tiles elevation dataset (SRTM, GMTED, ETOPO and other sources). A pixel is shaded blue if its height is above 0 m (dry today) but below the water level. This is called a "bathtub" model.</p>
+      <p><b>Map:</b> ground height comes from the open Terrain Tiles elevation dataset (SRTM, GMTED, ETOPO and other sources). A pixel is shaded blue if its height is above 0 m (dry today) but below the water level. This is called a "bathtub" model. Flooding is drawn in squares that are always 4×4 screen pixels; each square's shade shows the fraction of its land that floods (lighter blue = partly flooded). Zoomed out, a square covers kilometres and uses the coarser elevation data for that zoom; zoom in for squares of a few tens of metres. Because the coarse and fine elevation data come from different sources, small details can shift slightly between zoom levels. When zoomed out, each elevation pixel's height is an average over kilometres, which hides narrow strips of low coast and shallow sea floor. For pixels right on the coastline the site therefore assumes the ground rises evenly from the shoreline across the pixel: a coastal pixel with average height <i>h</i> has a share <i>L</i> / (2<i>h</i>) of its area below water level <i>L</i> (and likewise for shallow sea floor when the sea falls). That is why coasts show faint colour when zoomed out; zoom in for the measured result.</p>
+      <p><b>One city:</b> every elevation pixel within a circle around the city centre is counted. The circle's radius grows with population (1.5 km × √(population / 100,000), between 2 and 25 km). The share of land pixels at or below the water level is the share of the city under water.</p>
     </div>
 
     <div class="card full">
@@ -198,6 +222,7 @@
       <ul>
         <li><b>Global average only.</b> Real local sea level also depends on land sinking or rising (for example, parts of the US Gulf Coast are sinking), on ocean currents and on gravity effects of melting ice. Local rise can be much larger or smaller than the global number.</li>
         <li><b>No sea walls or levees.</b> Protected places like the Netherlands or New Orleans show up as flooded even though defences keep the water out today. The model also does not check whether low inland land is actually connected to the sea.</li>
+        <li><b>Zoomed-out shading is an estimate.</b> At wide views, flooding along coastlines is estimated by assuming the ground rises evenly away from the shore inside each kilometres-wide pixel. Real coasts with cliffs or wide flat marshes will differ; zoom in to see the measured result.</li>
         <li><b>Elevation data is coarse.</b> Satellite elevation data can be off by several metres, which is larger than the sea-level change itself. When zoomed out, each pixel covers kilometres. Treat the map as an illustration, not a property-level flood map.</li>
         <li><b>Ice-sheet uncertainty.</b> The IPCC cannot rule out a rise approaching 2 m by 2100 under very high emissions, if the Antarctic ice sheet collapses faster than expected. Those low-likelihood outcomes are not included here.</li>
         <li><b>Outside the IPCC scenarios the line is extrapolated.</b> Warming below about 1.4 °C or above 4.4 °C is not covered by the IPCC scenarios, and cooling below pre-industrial (negative values) would require removing more than all the extra greenhouse gas humans have added. Those settings show the direction of change, not a forecast.</li>
@@ -213,7 +238,7 @@
         <li>Levermann, A. et al. (2013). The multimillennial sea-level commitment of global warming. <i>PNAS</i> 110, 13745–13750. <a href="https://doi.org/10.1073/pnas.1219414110">doi:10.1073/pnas.1219414110</a></li>
         <li>Terrain Tiles (Mapzen / AWS Open Data): global elevation. <a href="https://registry.opendata.aws/terrain-tiles/">registry.opendata.aws/terrain-tiles</a></li>
         <li>Natural Earth: country borders and populated places. <a href="https://www.naturalearthdata.com/">naturalearthdata.com</a></li>
-        <li>Base map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, © <a href="https://carto.com/attributions">CARTO</a>.</li>
+        <li>Base maps: Esri World Topographic Map (Esri, HERE, Garmin, USGS, NGA and others), <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA, © OpenStreetMap contributors, SRTM), and Esri World Light Gray Canvas.</li>
         <li>Historical global temperature (shown in the stats only): approximate values from HadCRUT5 / Berkeley Earth; about 1.2 °C above 1850–1900 by 2020.</li>
       </ol>
     </div>
@@ -281,7 +306,7 @@ function tempInYear(year, T) {
    2. STATE + CONTROLS
    ===================================================================== */
 const $ = id => document.getElementById(id);
-const state = { year: 2100, T: 2.7, surge: 0, country: null };
+const state = { year: 2026, T: 1.4, surge: 0, country: null };
 function waterLevel() { return seaVsToday(state.year, state.T) + state.surge; }
 
 const fmtM = v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + " m";
@@ -317,13 +342,15 @@ function updateText() {
 }
 
 let redrawPending = false;
+// Slider moved: do all the drawing at most once per screen frame.
 function onChange() {
   readControls();
-  updateText();
-  drawCharts();
   if (!redrawPending) {
     redrawPending = true;
-    requestAnimationFrame(() => { redrawPending = false; repaintAllTiles(); refreshCities(false); });
+    requestAnimationFrame(() => {
+      redrawPending = false;
+      updateText(); drawCharts(); repaintAllTiles(); drawCities(); renderTableSoon(); renderCityPanel();
+    });
   }
 }
 ["year", "warming", "surge"].forEach(id => $(id).addEventListener("input", onChange));
@@ -332,83 +359,255 @@ document.querySelectorAll(".presets button").forEach(b =>
 
 /* =====================================================================
    3. MAP + ELEVATION OVERLAY
+   Flooding is shaded in squares of fixed screen size (see below). Moving
+   a slider only recolours squares already in memory.
    ===================================================================== */
-const map = L.map("map", { preferCanvas: true, worldCopyJump: true, minZoom: 2, maxZoom: 14 }).setView([20, 10], 2);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png", {
-  subdomains: "abcd", maxZoom: 19,
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a> | Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a> | Places: Natural Earth'
-}).addTo(map);
+const map = L.map("map", { preferCanvas: true, worldCopyJump: true, minZoom: 2, maxZoom: 15 }).setView([20, 10], 2);
 
+// Topographic base maps that need no API key. (CARTO's free tiles now require a key.)
+const DATA_ATTR = ' | Elevation: <a href="https://registry.opendata.aws/terrain-tiles/">Terrain Tiles</a> | Places: <a href="https://www.naturalearthdata.com/">Natural Earth</a>';
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+const topoMap = L.tileLayer(ESRI + "World_Topo_Map/MapServer/tile/{z}/{y}/{x}", {
+  maxZoom: 19, attribution: "Base map: Esri, HERE, Garmin, USGS, NGA, &copy; OpenStreetMap contributors" + DATA_ATTR
+});
+const openTopo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+  subdomains: "abc", maxZoom: 17,
+  attribution: 'Map: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA), &copy; OpenStreetMap contributors, SRTM' + DATA_ATTR
+});
+const grayMap = L.layerGroup([
+  L.tileLayer(ESRI + "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, maxNativeZoom: 16, attribution: "Base map: Esri, HERE, Garmin, &copy; OpenStreetMap contributors" + DATA_ATTR }),
+  L.tileLayer(ESRI + "Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}", { maxZoom: 19, maxNativeZoom: 16, pane: "labels" })
+]);
 map.createPane("flood");  map.getPane("flood").style.zIndex = 350;
 map.createPane("labels"); map.getPane("labels").style.zIndex = 450;
 map.getPane("labels").style.pointerEvents = "none";
+topoMap.addTo(map);
+L.control.layers({
+  "Topographic (Esri)": topoMap,
+  "Topographic with contours (OpenTopoMap)": openTopo,
+  "Simple light gray": grayMap
+}, null, { position: "topleft" }).addTo(map);
 
-// Place-name labels for every city, town and village (OpenStreetMap), drawn above the flood colours.
-L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png", {
-  subdomains: "abcd", maxZoom: 19, pane: "labels"
-}).addTo(map);
+// Small status box in the map corner
+const statusParts = { data: "Loading city and country data…" };
+function setStatus(key, text) {
+  statusParts[key] = text;
+  const t = Object.values(statusParts).filter(Boolean).join(" · ");
+  $("loadStatus").textContent = t;
+  $("loadStatus").style.display = t ? "block" : "none";
+}
 
 const TERRARIUM = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 const decodeCanvas = document.createElement("canvas");
 decodeCanvas.width = decodeCanvas.height = 256;
 const decodeCtx = decodeCanvas.getContext("2d", { willReadFrequently: true });
 
-// Terrarium encoding: height (m) = R*256 + G + B/256 − 32768
-function decodeTerrarium(img) {
-  decodeCtx.clearRect(0, 0, 256, 256);
-  decodeCtx.drawImage(img, 0, 0);
-  const d = decodeCtx.getImageData(0, 0, 256, 256).data;
-  const e = new Float32Array(256 * 256);
-  for (let i = 0, j = 0; i < e.length; i++, j += 4) e[i] = d[j] * 256 + d[j + 1] + d[j + 2] / 256 - 32768;
-  return e;
-}
-
-function loadElevTile(z, x, y) {
+function loadImage(url) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload = () => { try { resolve(decodeTerrarium(img)); } catch (err) { reject(err); } };
+    img.onload = () => resolve(img);
     img.onerror = reject;
-    img.src = TERRARIUM(z, x, y);
+    img.src = url;
   });
 }
 
-const liveTiles = new Set();
-function paintTile(canvas) {
-  const e = canvas._elev;
-  if (!e) return;
-  const ctx = canvas.getContext("2d");
-  const img = ctx.createImageData(256, 256);
-  const d = img.data;
-  const L = waterLevel();
-  for (let i = 0, j = 0; i < e.length; i++, j += 4) {
-    const h = e[i];
-    if (L > 0 && h > 0 && h <= L) {            // dry today, under water at this level
-      d[j] = 37; d[j + 1] = 99; d[j + 2] = 235; d[j + 3] = 175;
-    } else if (L < 0 && h <= 0 && h > L) {     // sea floor today, dry land at this level
-      d[j] = 217; d[j + 1] = 119; d[j + 2] = 6; d[j + 3] = 165;
+// Terrarium encoding: height (m) = R*256 + G + B/256 − 32768.
+// Stored as whole decimetres in an Int16Array (clamped to ±3276 m) to save memory.
+function decodeInto(img, dest, destW, ox, oy) {
+  decodeCtx.clearRect(0, 0, 256, 256);
+  decodeCtx.drawImage(img, 0, 0);
+  const d = decodeCtx.getImageData(0, 0, 256, 256).data;
+  for (let y = 0; y < 256; y++) {
+    let j = y * 1024, k = (oy + y) * destW + ox;
+    for (let x = 0; x < 256; x++, j += 4, k++) {
+      const h = Math.round((d[j] * 256 + d[j + 1] + d[j + 2] / 256 - 32768) * 10);
+      dest[k] = h > 32767 ? 32767 : h < -32767 ? -32767 : h;
     }
   }
-  ctx.putImageData(img, 0, 0);
 }
-function repaintAllTiles() { liveTiles.forEach(paintTile); }
+async function loadElevTile(z, x, y) {
+  const img = await loadImage(TERRARIUM(z, x, y));
+  const a = new Int16Array(65536);
+  decodeInto(img, a, 256, 0, 0);
+  return a;
+}
+
+function tileLatLngBounds(x, y, z) {
+  const n = 2 ** z;
+  const lat = t => Math.atan(Math.sinh(Math.PI * (1 - 2 * t / n))) * 180 / Math.PI;
+  return L.latLngBounds([lat(y + 1), x / n * 360 - 180], [lat(y), (x + 1) / n * 360 - 180]);
+}
+
+// Colours (RGB) for flooded land and exposed sea floor
+const BLUE_RGB = (235 << 16) | (99 << 8) | 37;      // little-endian pixel: blue, green, red
+const ORANGE_RGB = (6 << 16) | (119 << 8) | 217;
+// The sliders can never put the water more than 6 m above or 0.7 m below today,
+// so only pixels in that height band can ever change colour.
+const UP_MAX_DM = 60, DOWN_MIN_DM = -7;
+
+/* ---------------------------------------------------------------------
+   SHADING IN FIXED-SIZE SQUARES
+   Flooding is drawn in squares that are always BLOCK × BLOCK screen pixels,
+   whatever the zoom. Each map tile needs exactly one elevation download
+   (at the same zoom as the map), so loading stays quick: zoomed out a
+   square covers kilometres, zoomed in it covers a few tens of metres.
+   A square's shade shows the fraction of its land that floods: solid blue
+   = all of it, lighter = part of it.
+   --------------------------------------------------------------------- */
+const BLOCK = 4, NB = 256 / BLOCK;                 // 64 × 64 squares per tile
+const liveTiles = new Set();
+const maskCanvas = document.createElement("canvas");
+maskCanvas.width = maskCanvas.height = 256;
+const maskCtx = maskCanvas.getContext("2d", { willReadFrequently: true });
+
+function buildClipPath(z, tx, ty) {
+  const ox = tx * 256, oy = ty * 256;
+  const tb = tileLatLngBounds(tx, ty, z).pad(0.1);
+  const p = new Path2D();
+  for (const poly of state.country.polys) {
+    if (!poly.bounds.intersects(tb)) continue;
+    for (const ring of poly.rings) {
+      ring.forEach(([lon, lat], i) => {
+        const pt = L.CRS.EPSG3857.latLngToPoint(L.latLng(Math.max(-85, Math.min(85, lat)), lon), z);
+        if (i) p.lineTo(pt.x - ox, pt.y - oy); else p.moveTo(pt.x - ox, pt.y - oy);
+      });
+      p.closePath();
+    }
+  }
+  return p;
+}
+function tileInCountry(x, y, z) {
+  return !state.country || state.country.polys.some(p => p.bounds.intersects(tileLatLngBounds(x, y, z)));
+}
+
+// Run once per tile: keep only pixels that can ever change colour, sorted by height,
+// and count the land and sea pixels in each square.
+function prepareTile(c, e, z, x, y) {
+  let inside = null;
+  if (state.country) {
+    maskCtx.clearRect(0, 0, 256, 256);
+    maskCtx.fillStyle = "#000";
+    maskCtx.fill(buildClipPath(z, x, y), "evenodd");
+    inside = maskCtx.getImageData(0, 0, 256, 256).data;
+  }
+  const blockOf = i => ((i >> 8) >> 2) * NB + ((i & 255) >> 2);
+  const land = new Uint8Array(NB * NB), sea = new Uint8Array(NB * NB);
+  const upCount = new Int32Array(UP_MAX_DM + 1), downCount = new Int32Array(-DOWN_MIN_DM + 1);
+  for (let i = 0; i < 65536; i++) {
+    if (inside && inside[i * 4 + 3] < 128) continue;
+    const h = e[i];
+    if (h > 0) land[blockOf(i)]++; else sea[blockOf(i)]++;
+    if (h > UP_MAX_DM || h < DOWN_MIN_DM) continue;
+    if (h > 0) upCount[h]++; else downCount[-h]++;
+  }
+  const sortBy = counts => {
+    const start = new Int32Array(counts.length); let n = 0;
+    for (let k = 0; k < counts.length; k++) { start[k] = n; n += counts[k]; }
+    return { blk: new Uint16Array(n), h: new Int16Array(n), start };
+  };
+  const up = sortBy(upCount), down = sortBy(downCount);
+  for (let i = 0; i < 65536; i++) {
+    const h = e[i];
+    if (h > UP_MAX_DM || h < DOWN_MIN_DM) continue;
+    if (inside && inside[i * 4 + 3] < 128) continue;
+    if (h > 0) { const p = up.start[h]++; up.blk[p] = blockOf(i); up.h[p] = h; }
+    else { const p = down.start[-h]++; down.blk[p] = blockOf(i); down.h[p] = h; }
+  }
+  // Zoomed out (elevation pixels wider than ~150 m), a coastal pixel's height is an average:
+  // a narrow strip of low land (or shallow sea floor) inside it is hidden. For pixels right on
+  // the coastline we assume the ground rises evenly from the shoreline across the pixel, so a
+  // pixel whose average height is h has a share L / (2h) of its area below water level L.
+  let shore = null;
+  if (z <= 9) {
+    const lh = [], lb = [], sh = [], sb = [];
+    for (let i = 0; i < 65536; i++) {
+      if (inside && inside[i * 4 + 3] < 128) continue;
+      const h = e[i], col = i & 255, row = i >> 8;
+      const isLand = h > 0;
+      const opp = j => (e[j] > 0) !== isLand;
+      const onShore = (col > 0 && opp(i - 1)) || (col < 255 && opp(i + 1)) || (row > 0 && opp(i - 256)) || (row < 255 && opp(i + 256));
+      if (!onShore) continue;
+      if (isLand && h <= 1000) { lh.push(h); lb.push(blockOf(i)); }          // land up to 100 m
+      else if (!isLand && h >= -1000) { sh.push(h); sb.push(blockOf(i)); }   // sea down to −100 m
+    }
+    shore = { landH: Int16Array.from(lh), landB: Uint16Array.from(lb), seaH: Int16Array.from(sh), seaB: Uint16Array.from(sb) };
+  }
+  c._t = { up, down, land, sea, shore };
+}
+
+// how many entries of a sorted list pass the test (binary search)
+function countWhere(arr, pass) {
+  let lo = 0, hi = arr.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (pass(arr[m])) lo = m + 1; else hi = m; }
+  return lo;
+}
+
+const upF = new Float32Array(NB * NB), downF = new Float32Array(NB * NB);
+// Opacity grows with the flooded share of the square: solid = all of it, faint = a small part.
+const alphaFor = frac => frac < 0.002 ? 0 : Math.round(Math.min(180, 35 + 145 * Math.sqrt(Math.min(1, frac))));
+function paintTile(c, Ld) {
+  const t = c._t;
+  if (!t) return;
+  const nUp = Ld > 0 ? countWhere(t.up.h, h => h <= Ld) : 0;      // land at or below the water
+  const nDown = Ld < 0 ? countWhere(t.down.h, h => h > Ld) : 0;   // sea floor above the water
+  // Tiles without coastline estimates only change when a whole pixel crosses the water line.
+  if (!t.shore && nUp === c._nUp && nDown === c._nDown) return;
+  if (t.shore && Ld === c._Ld) return;
+  c._nUp = nUp; c._nDown = nDown; c._Ld = Ld;
+  upF.fill(0); downF.fill(0);
+  for (let i = 0; i < nUp; i++) upF[t.up.blk[i]]++;
+  for (let i = 0; i < nDown; i++) downF[t.down.blk[i]]++;
+  if (t.shore) {
+    const s = t.shore;
+    if (Ld > 0) for (let i = 0; i < s.landH.length; i++) { const h = s.landH[i]; if (h > Ld) upF[s.landB[i]] += Ld / (2 * h); }
+    if (Ld < 0) for (let i = 0; i < s.seaH.length; i++) { const h = s.seaH[i]; if (h <= Ld && h < 0) downF[s.seaB[i]] += Ld / (2 * h); }
+  }
+  const ctx = c.getContext("2d");
+  if (!c._img) { c._img = ctx.createImageData(256, 256); c._px = new Uint32Array(c._img.data.buffer); }
+  const px = c._px;
+  px.fill(0);
+  for (let b = 0; b < NB * NB; b++) {
+    let color = 0, a;
+    if (upF[b] && (a = alphaFor(upF[b] / t.land[b]))) color = ((a << 24) | BLUE_RGB) >>> 0;
+    else if (downF[b] && (a = alphaFor(downF[b] / t.sea[b]))) color = ((a << 24) | ORANGE_RGB) >>> 0;
+    if (!color) continue;
+    const x0 = (b % NB) * BLOCK, y0 = ((b / NB) | 0) * BLOCK;
+    for (let yy = y0; yy < y0 + BLOCK; yy++) px.fill(color, yy * 256 + x0, yy * 256 + x0 + BLOCK);
+  }
+  ctx.putImageData(c._img, 0, 0);
+}
+function repaintAllTiles() {
+  const Ld = waterLevel() * 10;
+  liveTiles.forEach(c => paintTile(c, Ld));
+}
 
 const FloodLayer = L.GridLayer.extend({
   createTile(coords, done) {
     const c = document.createElement("canvas");
     c.width = c.height = 256;
-    const n = 2 ** coords.z;
-    if (coords.y < 0 || coords.y >= n) { setTimeout(() => done(null, c)); return c; }
-    const x = ((coords.x % n) + n) % n;
+    const n = 2 ** coords.z, x = ((coords.x % n) + n) % n;
+    if (coords.y < 0 || coords.y >= n || !tileInCountry(x, coords.y, coords.z)) { setTimeout(() => done(null, c)); return c; }
     loadElevTile(coords.z, x, coords.y)
-      .then(e => { c._elev = e; liveTiles.add(c); paintTile(c); done(null, c); })
+      .then(e => { prepareTile(c, e, coords.z, x, coords.y); liveTiles.add(c); paintTile(c, waterLevel() * 10); done(null, c); })
       .catch(() => done(null, c));
     return c;
   }
 });
-const flood = new FloodLayer({ pane: "flood", maxNativeZoom: 14, updateWhenZooming: false });
-flood.on("tileunload", ev => liveTiles.delete(ev.tile));
+const flood = new FloodLayer({ pane: "flood", maxNativeZoom: 15, updateWhenZooming: false, keepBuffer: 2 });
+flood.on("tileunload", ev => { liveTiles.delete(ev.tile); ev.tile._t = ev.tile._img = ev.tile._px = null; });
+flood.on("loading", () => setStatus("map", "Loading elevation…"));
+flood.on("load", () => setStatus("map", ""));
 flood.addTo(map);
+
+// Tell the reader how big one shaded square is at the current zoom.
+function updateDetail() {
+  const lat = map.getCenter().lat, z = map.getZoom();
+  const m = BLOCK * 156543 * Math.cos(lat * Math.PI / 180) / 2 ** z;
+  $("floodDetail").textContent = `Each shaded square is about ${fmtRes(m).replace("~", "")} across (always ${BLOCK}×${BLOCK} screen pixels). ` +
+    (z >= 12 ? "The elevation data itself is about 30 m detail, so zooming in further shows the same data larger." : "Zoom in for smaller squares and more detail.");
+}
+map.on("zoomend", updateDetail);
 
 /* =====================================================================
    4. COUNTRIES
@@ -424,11 +623,14 @@ function ringArea(r) {  // planar area in degrees², good enough for ranking pol
   for (let i = 0, j = r.length - 1; i < r.length; j = i++) a += (r[j][0] + r[i][0]) * (r[j][1] - r[i][1]);
   return Math.abs(a / 2);
 }
-// Bounds from the country's large polygons only, so far-flung small islands
-// (e.g. the Aleutians) don't stretch the view across the whole globe.
-function countryBounds(feature) {
+function polygonsOf(feature) {
   const g = feature.geometry;
-  const polys = g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+  return g.type === "Polygon" ? [g.coordinates] : g.coordinates;
+}
+// View bounds from the country's large polygons only, so far-flung small islands
+// (e.g. the Aleutians) don't stretch the view across the whole globe.
+function countryViewBounds(feature) {
+  const polys = polygonsOf(feature);
   const areas = polys.map(p => ringArea(p[0]));
   const maxA = Math.max(...areas);
   const b = L.latLngBounds([]);
@@ -443,18 +645,32 @@ function setCountry(name) {
     state.country = null;
     $("countryVal").textContent = "World";
     $("country").value = "";
+    clearCity();
+    flood.redraw();
+    planCitiesForRegion();
+    populateCityList();
     map.setView([20, 10], 2);
-    refreshCities(true);
+    refreshCities();
     return;
   }
   const c = countries.find(c => c.name.toLowerCase() === q) || countries.find(c => c.name.toLowerCase().startsWith(q));
   if (!c) { $("countryVal").textContent = "not found"; return; }
+  if (!c.polys) {
+    c.polys = polygonsOf(c.feature).map(rings => ({
+      rings, bounds: L.latLngBounds(rings[0].map(([lon, lat]) => [lat, lon]))
+    }));
+    c.fullBounds = L.geoJSON(c.feature).getBounds();
+  }
   state.country = c;
   $("country").value = c.name;
   $("countryVal").textContent = c.name;
   outline = L.geoJSON(c.feature, { style: { color: "#111827", weight: 1.5, fill: false, dashArray: "4 3" }, interactive: false }).addTo(map);
-  map.fitBounds(countryBounds(c.feature), { padding: [20, 20], maxZoom: 9 });
-  refreshCities(true);
+  clearCity();
+  flood.redraw();
+  planCitiesForRegion();
+  populateCityList();
+  map.fitBounds(countryViewBounds(c.feature), { padding: [20, 20], maxZoom: 9 });
+  refreshCities();
 }
 $("country").addEventListener("change", e => setCountry(e.target.value));
 $("country").addEventListener("keydown", e => { if (e.key === "Enter") setCountry(e.target.value); });
@@ -462,51 +678,88 @@ $("clearCountry").addEventListener("click", () => setCountry(""));
 
 /* =====================================================================
    5. CITIES
+   Every city in the region (world or selected country) gets an elevation,
+   checked once at one fixed level of detail: the most detailed elevation
+   zoom level that needs at most MAX_TILES downloads. Every city in a tile
+   is sampled from that one download.
    ===================================================================== */
-let cities = [];             // {name, country, a3, lat, lon, pop, elev?}
-const cityLayer = L.layerGroup().addTo(map);
-const ELEV_Z = 10;           // ~150 m pixels at the equator
-const MAX_CHECK = 80;
-const tileCache = new Map(); // "z/x/y" -> Promise<Float32Array>
-const queue = []; let active = 0; const MAX_ACTIVE = 6;
+let cities = [];             // {name, country, a3, lat, lon, pop, elev?, ez?, res?}
+const MAX_TILES = 150, MAX_ACTIVE = 8;
+const pending = new Map();   // "z/x/y" -> {z, x, y, cities: []}
+let activeFetch = 0;
 
-function getTileCached(z, x, y) {
-  const key = z + "/" + x + "/" + y;
-  if (!tileCache.has(key)) {
-    tileCache.set(key, loadElevTile(z, x, y).catch(() => null));
-    if (tileCache.size > 300) tileCache.delete(tileCache.keys().next().value);
-  }
-  return tileCache.get(key);
-}
-
-// Median of the positive (land) heights in a 5×5 pixel window (~750 m) around the city centre.
-async function cityElevation(c) {
-  const n = 2 ** ELEV_Z;
+function tileOf(c, z) {
+  const n = 2 ** z;
   const xt = (c.lon + 180) / 360 * n;
-  const latR = c.lat * Math.PI / 180;
+  const latR = Math.max(-85, Math.min(85, c.lat)) * Math.PI / 180;
   const yt = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n;
   const tx = Math.floor(xt), ty = Math.floor(yt);
-  const px = Math.floor((xt - tx) * 256), py = Math.floor((yt - ty) * 256);
-  const e = await getTileCached(ELEV_Z, ((tx % n) + n) % n, ty);
-  if (!e) return null;
-  const vals = [];
-  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
-    const x = Math.min(255, Math.max(0, px + dx)), y = Math.min(255, Math.max(0, py + dy));
-    const h = e[y * 256 + x];
-    if (h > 0) vals.push(h);
-  }
-  if (!vals.length) return 0;                      // centre sits on a shoreline pixel
-  vals.sort((a, b) => a - b);
-  return vals[Math.floor(vals.length / 2)];
+  const x = ((tx % n) + n) % n;
+  return { z, x, y: ty, key: z + "/" + x + "/" + ty, px: Math.floor((xt - tx) * 256), py: Math.floor((yt - ty) * 256) };
 }
 
-function pump() {
-  while (active < MAX_ACTIVE && queue.length) {
-    const c = queue.shift();
-    active++;
-    cityElevation(c).then(h => { c.elev = h; }).catch(() => { c.elev = null; })
-      .finally(() => { active--; c.queued = false; scheduleCityRender(); pump(); });
+// City-centre height: median of the land (> 0 m) pixels in a small window around the centre.
+// The window is wider when the elevation pixels are small, narrower when they are coarse.
+function sampleCity(c, e, z) {
+  const t = tileOf(c, z);
+  const win = z >= 10 ? 2 : z >= 8 ? 1 : 0;
+  const grab = w => {
+    const vals = [];
+    for (let dy = -w; dy <= w; dy++) for (let dx = -w; dx <= w; dx++) {
+      const x = Math.min(255, Math.max(0, t.px + dx)), y = Math.min(255, Math.max(0, t.py + dy));
+      const h = e[y * 256 + x];
+      if (h > 0) vals.push(h);
+    }
+    return vals;
+  };
+  let vals = grab(win);
+  if (!vals.length) vals = grab(win + 1);
+  let h = 0;                                      // no land pixel nearby: shoreline
+  if (vals.length) { vals.sort((a, b) => a - b); h = vals[Math.floor(vals.length / 2)] / 10; }
+  c.elev = h;
+  c.ez = z;
+  c.res = 156543 * Math.cos(c.lat * Math.PI / 180) / 2 ** z;   // metres per elevation pixel
+}
+
+function planElevations(list) {
+  pending.clear();
+  // Finest zoom (≤ 11) at which the cities still needing data fit in MAX_TILES downloads.
+  let chosen = 3;
+  for (let z = 11; z >= 3; z--) {
+    const keys = new Set();
+    for (const c of list) {
+      if (c.ez >= z) continue;
+      keys.add(tileOf(c, z).key);
+      if (keys.size > MAX_TILES) break;
+    }
+    if (keys.size <= MAX_TILES) { chosen = z; break; }
   }
+  for (const c of list) {
+    if (c.ez >= chosen) continue;
+    const t = tileOf(c, chosen);
+    if (!pending.has(t.key)) pending.set(t.key, { z: t.z, x: t.x, y: t.y, cities: [] });
+    pending.get(t.key).cities.push(c);
+  }
+  pumpTiles();
+}
+
+function pumpTiles() {
+  while (activeFetch < MAX_ACTIVE && pending.size) {
+    const [key, job] = pending.entries().next().value;
+    pending.delete(key);
+    activeFetch++;
+    loadElevTile(job.z, job.x, job.y)
+      .then(e => job.cities.forEach(c => { if (!(c.ez >= job.z)) sampleCity(c, e, job.z); }))
+      .catch(() => {})
+      .finally(() => { activeFetch--; scheduleCityUpdate(); pumpTiles(); });
+  }
+  updateCityStatus();
+}
+
+function updateCityStatus() {
+  const busy = pending.size || activeFetch;
+  const missing = busy ? visible.filter(c => c.elev === undefined).length : 0;
+  setStatus("cities", busy ? `Checking city elevations: ${visible.length - missing} of ${visible.length} in view done` : "");
 }
 
 function inCountry(c) {
@@ -514,79 +767,298 @@ function inCountry(c) {
   return (c.a3 && c.a3 === state.country.a3) || (c.country && c.country.toLowerCase() === state.country.name.toLowerCase());
 }
 
-function status(c) {
-  if (c.elev === undefined || c.elev === null) return "unknown";
-  const L = waterLevel();
+function status(c, L) {
+  if (c.elev === undefined) return "unknown";
   const margin = c.elev - L;
   if (L > 0 && margin <= 0) return "flooded";
   if (margin <= 1) return "near";
   return "safe";
 }
 const COLORS = { flooded: "#dc2626", near: "#f59e0b", safe: "#475569", unknown: "#cbd5e1" };
-const LABELS = { flooded: "Below water", near: "Within 1 m", safe: "Above", unknown: "Not checked" };
+const LABELS = { flooded: "Below water", near: "Within 1 m", safe: "Above", unknown: "Loading…" };
+const fmtRes = r => r >= 1000 ? "~" + (r / 1000).toFixed(r < 10000 ? 1 : 0) + " km" : "~" + Math.round(r / 10) * 10 + " m";
 
+// ---- City dots: ALL cities in view drawn on one canvas (much faster than thousands of markers)
+const cityCanvas = document.createElement("canvas");
+cityCanvas.style.cssText = "position:absolute;left:0;top:0;z-index:450;pointer-events:none;";
+map.getContainer().appendChild(cityCanvas);
+const cityCtx = cityCanvas.getContext("2d");
+const cityTip = document.createElement("div");
+cityTip.style.cssText = "position:absolute;z-index:900;display:none;pointer-events:none;background:#fff;border:1px solid #cbd5e1;border-radius:6px;padding:5px 8px;font-size:12px;line-height:1.4;box-shadow:0 2px 6px rgba(0,0,0,.15);white-space:nowrap;";
+map.getContainer().appendChild(cityTip);
+let drawn = [];              // cities drawn this frame, with screen positions
+
+function sizeCityCanvas() {
+  const s = map.getSize(), dpr = window.devicePixelRatio || 1;
+  cityCanvas.width = s.x * dpr; cityCanvas.height = s.y * dpr;
+  cityCanvas.style.width = s.x + "px"; cityCanvas.style.height = s.y + "px";
+  cityCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+sizeCityCanvas();
+
+const radiusOf = c => Math.min(14, Math.max(2.5, Math.sqrt(c.pop) / 450));
+function drawCities() {
+  const s = map.getSize();
+  cityCtx.clearRect(0, 0, s.x, s.y);
+  const L = waterLevel();
+  drawn = [];
+  for (let i = visible.length - 1; i >= 0; i--) {      // small first, big cities on top
+    const c = visible[i];
+    const p = map.latLngToContainerPoint([c.lat, c.lon]);
+    if (p.x < -15 || p.y < -15 || p.x > s.x + 15 || p.y > s.y + 15) continue;
+    const r = radiusOf(c);
+    cityCtx.beginPath();
+    cityCtx.arc(p.x, p.y, r, 0, 6.2832);
+    cityCtx.fillStyle = COLORS[status(c, L)];
+    cityCtx.fill();
+    if (c.cap) { cityCtx.lineWidth = 2.5; cityCtx.strokeStyle = "#111827"; cityCtx.stroke(); }
+    else if (r > 3) { cityCtx.lineWidth = 1; cityCtx.strokeStyle = "#fff"; cityCtx.stroke(); }
+    c._sx = p.x; c._sy = p.y; c._r = r;
+    drawn.push(c);
+  }
+}
+map.on("move", drawCities);
+map.on("zoomstart", () => { cityCanvas.style.display = "none"; cityTip.style.display = "none"; });
+map.on("zoomend", () => { cityCanvas.style.display = "block"; drawCities(); });
+map.on("resize", () => { sizeCityCanvas(); drawCities(); });
+
+// Hover / tap: find the closest dot under the pointer.
+function cityAt(pt) {
+  let best = null, bestD = Infinity;
+  for (let i = drawn.length - 1; i >= 0; i--) {
+    const c = drawn[i], dx = c._sx - pt.x, dy = c._sy - pt.y, d = dx * dx + dy * dy, r = c._r + 3;
+    if (d <= r * r && d < bestD) { best = c; bestD = d; }
+  }
+  return best;
+}
+function showTip(c) {
+  if (!c) { cityTip.style.display = "none"; return; }
+  const L = waterLevel(), s = status(c, L);
+  const elevTxt = c.elev === undefined ? "loading…" : c.elev.toFixed(1) + " m (data detail " + fmtRes(c.res) + ")";
+  cityTip.innerHTML = `<b>${c.name}</b>, ${c.country}${c.cap ? " (capital)" : ""}<br>Population: ${c.pop.toLocaleString()}<br>City-centre elevation: ${elevTxt}<br><span style="color:${COLORS[s]};font-weight:700">${LABELS[s]}</span>`;
+  cityTip.style.display = "block";
+  const w = map.getSize().x;
+  cityTip.style.left = Math.min(c._sx + 12, w - cityTip.offsetWidth - 4) + "px";
+  cityTip.style.top = (c._sy - 10) + "px";
+}
+map.on("mousemove", e => showTip(cityAt(e.containerPoint)));
+map.on("click", e => showTip(cityAt(e.containerPoint)));
+map.on("mouseout", () => showTip(null));
+
+// Zoomed out, show only big cities and national capitals; more appear as you zoom in.
+function shownAtZoom(c, z) {
+  if (c.cap) return true;
+  const minPop = z <= 3 ? 5e6 : z === 4 ? 2e6 : z === 5 ? 1e6 : z === 6 ? 3e5 : z === 7 ? 1e5 : 0;
+  return c.pop >= minPop;
+}
+// Cities to show: those in the visible window (and selected country) that are big enough for this zoom.
 let visible = [];
-function refreshCities(requeue) {
+function refreshCities() {
   if (!cities.length) return;
   const b = map.getBounds().pad(0.05);
-  visible = cities.filter(c => inCountry(c) && b.contains([c.lat, c.lon]));
-  // Queue the largest cities in view for an elevation check (only when the view changed).
-  if (requeue) {
-    queue.length = 0;                                  // drop checks for cities no longer in view
-    cities.forEach(c => { if (c.elev === undefined) c.queued = false; });
-    visible.slice(0, MAX_CHECK).forEach(c => {
-      if (c.elev === undefined && !c.queued) { c.queued = true; queue.push(c); }
-    });
-    pump();
-  }
-  renderCities();
+  const z = map.getZoom();
+  visible = cities.filter(c => inCountry(c) && b.contains([c.lat, c.lon]) && (shownAtZoom(c, z) || (focus && focus.c === c)));
+  drawCities();
+  renderTableSoon();
+  updateCityStatus();
 }
 
-let renderTimer = null;
-function scheduleCityRender() {
-  if (renderTimer) return;
-  renderTimer = setTimeout(() => { renderTimer = null; renderCities(); }, 150);
+// City heights are checked once per region (world or country) at one fixed level of
+// detail, so a city's colour never changes just because you zoomed in or out.
+function planCitiesForRegion() {
+  if (!cities.length) return;
+  cities.forEach(c => { c.elev = undefined; c.ez = undefined; c.res = undefined; });
+  planElevations(cities.filter(inCountry));
+}
+map.on("moveend", refreshCities);
+
+// New elevations arrived: redraw dots and table (batched).
+let cityTimer = null;
+function scheduleCityUpdate() {
+  if (cityTimer) return;
+  cityTimer = setTimeout(() => { cityTimer = null; drawCities(); renderTable(); updateCityStatus(); }, 150);
 }
 
-function renderCities() {
-  cityLayer.clearLayers();
-  const shown = visible.slice(0, 1500);
-  for (let i = shown.length - 1; i >= 0; i--) {     // draw big cities last so they sit on top
-    const c = shown[i];
-    const s = status(c);
-    const r = Math.min(14, Math.max(3, Math.sqrt(c.pop) / 450));
-    const m = L.circleMarker([c.lat, c.lon], {
-      radius: r, color: "#fff", weight: 1, fillColor: COLORS[s], fillOpacity: 0.9
-    });
-    const elevTxt = (c.elev === undefined || c.elev === null) ? "not checked yet (zoom in)" : c.elev.toFixed(1) + " m";
-    m.bindTooltip(`<b>${c.name}</b>, ${c.country}<br>Population: ${c.pop.toLocaleString()}<br>City-centre elevation: ${elevTxt}<br>${LABELS[s]}`);
-    m.addTo(cityLayer);
-  }
+// The table is the slowest part, so while a slider is being dragged it updates at most ~5×/s.
+let tableTimer = null, tableLast = 0;
+function renderTableSoon() {
+  if (tableTimer) return;
+  const wait = Math.max(0, 200 - (performance.now() - tableLast));
+  tableTimer = setTimeout(() => { tableTimer = null; tableLast = performance.now(); renderTable(); }, wait);
+}
 
-  // Table + summary
-  const checked = visible.filter(c => c.elev !== undefined && c.elev !== null);
+function renderTable() {
+  if (!cities.length) return;
+  const L = waterLevel();
   const order = { flooded: 0, near: 1, safe: 2 };
-  checked.sort((a, b) => (order[status(a)] - order[status(b)]) || (b.pop - a.pop));
-  const flooded = checked.filter(c => status(c) === "flooded");
-  const popF = flooded.reduce((s, c) => s + c.pop, 0);
-  $("sCities").textContent = flooded.length + " / " + checked.length;
-  $("sCitiesSub").textContent = flooded.length ? "≈ " + fmtPop(popF) + " people (city-centre test)" : "of the largest cities in view";
+  let nFlood = 0, popF = 0;
+  const checked = [];
+  for (const c of visible) {
+    if (c.elev === undefined) continue;
+    c._s = status(c, L);
+    if (c._s === "flooded") { nFlood++; popF += c.pop; }
+    checked.push(c);
+  }
+  checked.sort((a, b) => (order[a._s] - order[b._s]) || (b.pop - a.pop));
+  $("sCities").textContent = nFlood + " / " + checked.length;
+  $("sCitiesSub").textContent = nFlood ? "≈ " + fmtPop(popF) + " people (city-centre test)" : "cities in the current view";
   $("tableTitle").textContent = (state.country ? state.country.name + ": " : "Current view: ") +
-    "largest cities ranked by risk, at water level " + fmtM(waterLevel()) + " in " + state.year;
+    "cities ranked by risk, at water level " + fmtM(L) + " in " + state.year;
 
-  const rows = checked.slice(0, 30).map(c => {
-    const s = status(c), margin = c.elev - waterLevel();
+  const rows = checked.slice(0, 40).map(c => {
+    const margin = c.elev - L;
     return `<tr><td>${c.name}</td><td>${c.country}</td><td class="num">${c.pop.toLocaleString()}</td>
       <td class="num">${c.elev === 0 ? "≈0 (shoreline)" : c.elev.toFixed(1)}</td>
       <td class="num">${margin.toFixed(2)}</td>
-      <td><span class="pill" style="background:${COLORS[s]}">${LABELS[s]}</span></td></tr>`;
+      <td class="num">${fmtRes(c.res)}</td>
+      <td><span class="pill" style="background:${COLORS[c._s]}">${LABELS[c._s]}</span></td></tr>`;
   });
   $("cityRows").innerHTML = rows.length ? rows.join("") :
-    `<tr><td colspan="6">${visible.length ? "Checking city elevations…" : "No cities in view. Zoom out or pick a country."}</td></tr>`;
+    `<tr><td colspan="7">${visible.length ? "Checking city elevations…" : "No cities in view. Zoom out or pick a country."}</td></tr>`;
 }
 function fmtPop(p) { return p >= 1e6 ? (p / 1e6).toFixed(1) + " million" : Math.round(p / 1e3) + " thousand"; }
 
-map.on("moveend", () => refreshCities(true));
+/* =====================================================================
+   5b. ONE CITY IN DETAIL
+   Pick a city: the map zooms in on it, and the site measures every
+   elevation pixel within a circle around the centre (radius scaled by
+   population) to find what share of the city's land is below the water.
+   ===================================================================== */
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+let cityChoices = [];
+let focus = null;            // {c, rKm, landTotal, seaTotal, upCum: Float64Array, downCum, circle}
+
+function populateCityList() {
+  cityChoices = state.country ? cities.filter(inCountry) : cities.slice(0, 2500);
+  $("cityList").innerHTML = cityChoices.map(c => `<option value="${esc(cityLabel(c))}">`).join("");
+  $("city").placeholder = state.country ? `Type a city in ${state.country.name}` : "Type a city, e.g. Dhaka";
+}
+const cityLabel = c => state.country ? c.name : c.name + ", " + c.country;
+
+function cityRadiusKm(c) { return Math.min(25, Math.max(2, 1.5 * Math.sqrt(c.pop / 1e5))); }
+
+function clearCity() {
+  if (focus && focus.circle) map.removeLayer(focus.circle);
+  focus = null;
+  $("city").value = "";
+  $("cityVal").textContent = "none";
+  $("cityPanel").style.display = "none";
+}
+
+function selectCity(text) {
+  const q = (text || "").trim().toLowerCase();
+  if (!q) { clearCity(); refreshCities(); return; }
+  const c = cityChoices.find(c => cityLabel(c).toLowerCase() === q) ||
+            cityChoices.find(c => c.name.toLowerCase() === q) ||
+            cityChoices.find(c => cityLabel(c).toLowerCase().startsWith(q));
+  if (!c) { $("cityVal").textContent = "not found"; return; }
+  if (focus && focus.circle) map.removeLayer(focus.circle);
+  const rKm = cityRadiusKm(c);
+  focus = { c, rKm, loading: true };
+  focus.circle = L.circle([c.lat, c.lon], { radius: rKm * 1000, color: "#111827", weight: 2, dashArray: "6 4", fill: false, interactive: false }).addTo(map);
+  $("city").value = cityLabel(c);
+  $("cityVal").textContent = c.name;
+  $("cityPanel").style.display = "block";
+  // zoom so the circle fills most of the map
+  const h = map.getSize().y;
+  const z = Math.log2(h * 156543 * Math.cos(c.lat * Math.PI / 180) / (2.6 * rKm * 1000));
+  map.setView([c.lat, c.lon], Math.max(8, Math.min(14, Math.floor(z))));
+  renderCityPanel();
+  analyzeCity(focus);
+}
+
+// Height histogram of all land and sea pixels inside the city circle.
+async function analyzeCity(f) {
+  const { c, rKm } = f;
+  const dLat = rKm / 110.57, dLon = rKm / (111.32 * Math.cos(c.lat * Math.PI / 180));
+  const b = L.latLngBounds([c.lat - dLat, c.lon - dLon], [c.lat + dLat, c.lon + dLon]);
+  let z = 14, tiles;
+  for (; z >= 8; z--) {                                  // finest zoom that needs at most 36 tiles
+    const p0 = L.CRS.EPSG3857.latLngToPoint(b.getNorthWest(), z), p1 = L.CRS.EPSG3857.latLngToPoint(b.getSouthEast(), z);
+    tiles = [];
+    for (let x = Math.floor(p0.x / 256); x <= Math.floor(p1.x / 256); x++)
+      for (let y = Math.floor(p0.y / 256); y <= Math.floor(p1.y / 256); y++) tiles.push([x, y]);
+    if (tiles.length <= 36) break;
+  }
+  const up = new Float64Array(UP_MAX_DM + 1), down = new Float64Array(-DOWN_MIN_DM + 1);
+  let landTotal = 0, seaTotal = 0, landPixels = [];
+  const n = 2 ** z, kmPerDegLon = 111.32 * Math.cos(c.lat * Math.PI / 180);
+  await Promise.all(tiles.map(async ([tx, ty]) => {
+    const e = await loadElevTile(z, ((tx % n) + n) % n, ty).catch(() => null);
+    if (!e || focus !== f) return;
+    for (let py = 0; py < 256; py++) {
+      const lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * (ty * 256 + py + 0.5) / (256 * n)))) * 180 / Math.PI;
+      const dy = (lat - c.lat) * 110.57;
+      for (let px = 0; px < 256; px++) {
+        const lon = (tx * 256 + px + 0.5) / (256 * n) * 360 - 180;
+        const dx = (lon - c.lon) * kmPerDegLon;
+        if (dx * dx + dy * dy > rKm * rKm) continue;
+        const h = e[py * 256 + px];
+        if (h > 0) { landTotal++; if (h <= UP_MAX_DM) up[h]++; if (landPixels.length < 200000) landPixels.push(h); }
+        else { seaTotal++; if (h >= DOWN_MIN_DM) down[-h]++; }
+      }
+    }
+  }));
+  if (focus !== f) return;
+  for (let k = 1; k <= UP_MAX_DM; k++) up[k] += up[k - 1];      // cumulative: land at or below k dm
+  for (let k = 1; k <= -DOWN_MIN_DM; k++) down[k] += down[k - 1];
+  landPixels.sort((a, b) => a - b);
+  Object.assign(f, {
+    loading: false, z, landTotal, seaTotal, upCum: up, downCum: down,
+    medianElev: landPixels.length ? landPixels[landPixels.length >> 1] / 10 : null,
+    pixelM: 156543 * Math.cos(c.lat * Math.PI / 180) / n
+  });
+  renderCityPanel();
+}
+
+// Share of the city's land below water level L (metres).
+function cityShare(f, L) {
+  if (!f.landTotal) return 0;
+  const k = Math.min(UP_MAX_DM, Math.floor(L * 10));
+  return L > 0 ? f.upCum[Math.max(0, k)] / f.landTotal : 0;
+}
+
+function renderCityPanel() {
+  if (!focus) return;
+  const f = focus, c = f.c, L = waterLevel();
+  $("cityTitle").textContent = `${c.name}, ${c.country}`;
+  if (f.loading) { $("cityText").innerHTML = "Measuring the city's elevation…"; drawCityChart(); return; }
+  const share = cityShare(f, L);
+  const areaKm2 = f.landTotal * f.pixelM * f.pixelM / 1e6;
+  const exposedKm2 = L < 0 ? f.downCum[Math.min(-DOWN_MIN_DM, Math.floor(-L * 10))] * f.pixelM * f.pixelM / 1e6 : 0;
+  $("cityText").innerHTML =
+    `<p style="font-size:1.6rem;font-weight:700;margin:4px 0;color:${share > 0 ? "#2563eb" : "#1f2933"}">${(share * 100).toFixed(1)}% of the city's land is below the water</p>
+     <p>Water level ${fmtM(L)} in ${state.year} (warming ${fmtT(state.T)}, surge ${state.surge.toFixed(1)} m).
+     That is about <b>${(share * areaKm2).toFixed(1)} km²</b> of ${areaKm2.toFixed(0)} km² of land${share > 0 ? `, home to roughly <b>${fmtPop(share * c.pop)}</b> people if the population (${c.pop.toLocaleString()}) were spread evenly` : ""}.
+     ${L < 0 ? `Falling seas would expose about ${exposedKm2.toFixed(1)} km² of shallow sea floor.` : ""}</p>
+     <p class="chart-note">City area = circle of ${f.rKm.toFixed(1)} km radius around the centre (scaled by population; dashed on the map). Median land elevation ${f.medianElev === null ? "n/a" : f.medianElev.toFixed(1) + " m"}. Measured from ${f.landTotal.toLocaleString()} elevation pixels of about ${Math.round(f.pixelM)} m.</p>`;
+  drawCityChart();
+}
+
+function drawCityChart() {
+  const svg = $("chartCity");
+  const { X, Y } = axes(svg, {
+    title: "Share of the city's land below the water", xlab: "Water level vs. 2020 (m)", ylab: "City land under water (%)",
+    x0: 0, x1: 6, y0: 0, y1: 100, xticks: [0, 1, 2, 3, 4, 5, 6], yticks: [0, 20, 40, 60, 80, 100],
+    xfmt: v => v, yfmt: v => v
+  });
+  // where the sea alone gets to by 2100 under three warming levels
+  [[1.4, "1.4 °C"], [2.7, "2.7 °C"], [4.4, "4.4 °C"]].forEach(([T, lab], i) => {
+    const v = seaVsToday(2100, T);
+    svg.appendChild(el("line", { x1: X(v), x2: X(v), y1: Y(0), y2: Y(100), stroke: "#b8c2cc", "stroke-dasharray": "3 3" }));
+    svg.appendChild(el("text", { x: X(v) + 3, y: Y(95 - i * 7), "font-size": 10, fill: "#5b6770" }, "2100 sea, " + lab));
+  });
+  if (!focus || focus.loading || !focus.landTotal) return;
+  const pts = [];
+  for (let v = 0; v <= 6.0001; v += 0.1) pts.push([X(v), Y(cityShare(focus, v) * 100)]);
+  svg.appendChild(el("path", { d: path(pts), fill: "none", stroke: "#2563eb", "stroke-width": 2.5 }));
+  const L = Math.max(0, Math.min(6, waterLevel()));
+  svg.appendChild(el("circle", { cx: X(L), cy: Y(cityShare(focus, L) * 100), r: 6, fill: "#dc2626", stroke: "#fff", "stroke-width": 1.5 }));
+}
+
+$("city").addEventListener("change", e => selectCity(e.target.value));
+$("city").addEventListener("keydown", e => { if (e.key === "Enter") selectCity(e.target.value); });
+$("clearCity").addEventListener("click", () => { clearCity(); refreshCities(); });
 
 /* =====================================================================
    6. CHARTS (hand-drawn SVG so they update instantly)
@@ -692,19 +1164,21 @@ async function loadData() {
         country: pick(p, "adm0name", "ADM0NAME", "sov0name", "SOV0NAME") || "",
         a3: pick(p, "adm0_a3", "ADM0_A3", "sov_a3", "SOV_A3"),
         lat: g[1], lon: g[0],
-        pop: +(pick(p, "pop_max", "POP_MAX", "pop_min", "POP_MIN") || 0)
+        pop: +(pick(p, "pop_max", "POP_MAX", "pop_min", "POP_MIN") || 0),
+        cap: +(pick(p, "adm0cap", "ADM0CAP") || 0) === 1
       };
     }).filter(c => c.name && isFinite(c.lat)).sort((a, b) => b.pop - a.pop);
-    $("loadStatus").textContent = cities.length.toLocaleString() + " cities, " + countries.length + " countries loaded";
-    setTimeout(() => $("loadStatus").style.display = "none", 4000);
-    refreshCities(true);
+    setStatus("data", "");
+    planCitiesForRegion();
+    populateCityList();
+    refreshCities();
   } catch (err) {
     console.error(err);
-    $("loadStatus").textContent = "Could not load city/country data (check your internet connection).";
+    setStatus("data", "Could not load city/country data (check your internet connection).");
   }
 }
 
-readControls(); updateText(); drawCharts(); loadData();
+readControls(); updateText(); drawCharts(); updateDetail(); loadData();
 </script>
 </body>
 </html>
