@@ -8,9 +8,9 @@ An interactive map that shows which coastal land, cities and towns end up below 
 
 The map colours dry land that falls below the water level, marks cities by whether their centre is below, near or above the water, and updates two charts and a city table live.
 
-**Live site:** https://YOUR-USERNAME.github.io/YOUR-REPO-NAME/
+**Live site:** https://marcuswang-ai.github.io/atmo-interactive-website/
 
-**Group members:** NAME 1, NAME 2, NAME 3, NAME 4
+**Group members:** Marcus Wang, Samuel Sebastian DeGroot, Randy Yanes
 
 ## How it works
 
@@ -22,3 +22,4 @@ The map colours dry land that falls below the water level, marks cities by wheth
 ## Running it
 
 It is one file, `index.html`, with no build step. Open it in a browser, or publish it with GitHub Pages (Settings → Pages → Deploy from branch → `main` / root). It needs an internet connection to load the map tiles, elevation data and city list.
+
